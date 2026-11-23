@@ -186,9 +186,9 @@ export default function SignupPage() {
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: "starter", name: "Starter", price: "$99/mo", limit: "Up to $10k/mo MRR" },
-                  { id: "growth", name: "Growth", price: "$249/mo", limit: "Up to $50k/mo MRR", popular: true },
-                  { id: "scale", name: "Scale", price: "$499/mo", limit: "Unlimited MRR" },
+                  { id: "starter", name: "Starter", price: "$79/mo", limit: "Up to $10k/mo MRR" },
+                  { id: "growth", name: "Growth", price: "$149/mo", limit: "Up to $50k/mo MRR", popular: true },
+                  { id: "scale", name: "Scale", price: "$299/mo", limit: "Unlimited MRR" },
                 ].map((plan) => (
                   <button
                     key={plan.id}

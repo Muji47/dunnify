@@ -122,15 +122,15 @@ export default function Home() {
 
       {/* Navigation */}
       <header className="border-b border-white/[0.08] backdrop-blur-md sticky top-0 z-50 bg-[#080F1C]/80">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center space-x-3 shrink-0">
             <Logo size="md" />
             <span className="text-[10px] uppercase font-mono tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full hidden sm:inline-block">
               For Stripe
             </span>
           </div>
 
-          <nav className="hidden md:flex items-center space-x-8 text-sm text-slate-400 font-medium">
+          <nav className="hidden lg:flex items-center space-x-8 text-sm text-slate-400 font-medium">
             <a href="#pipeline" className="hover:text-white transition">4-Step Engine</a>
             <a href="#demo" className="hover:text-white transition">Interactive Demo</a>
             <a href="#roi-calculator" className="hover:text-white transition">ROI Calculator</a>
@@ -140,7 +140,7 @@ export default function Home() {
             </Link>
           </nav>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 shrink-0">
             <Link
               href="/login"
               className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/[0.04] transition"
@@ -513,7 +513,7 @@ export default function Home() {
 
           <div className="bg-[#111C2E] border border-white/[0.08] rounded-3xl p-8 shadow-2xl">
             <div className="mb-8">
-              <div className="flex justify-between items-center mb-2">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                 <label className="text-sm font-semibold text-slate-300">
                   Your Monthly Recurring Revenue (MRR):
                 </label>

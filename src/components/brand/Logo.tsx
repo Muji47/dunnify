@@ -28,7 +28,7 @@ export function Logo({
 
   if (iconOnly || !showWordmark) {
     return (
-      <div className={`inline-flex items-center ${className}`}>
+      <div className={`inline-flex items-center shrink-0 ${className}`}>
         <img
           src="/brand/dunnify-icon.png"
           alt="Dunnify Recovery Icon"
@@ -46,7 +46,7 @@ export function Logo({
       : "/brand/dunnify-logo-white-text.png";
 
   return (
-    <div className={`inline-flex items-center ${className}`}>
+    <div className={`inline-flex items-center shrink-0 ${className}`}>
       <img
         src={logoSrc}
         alt="Dunnify"
