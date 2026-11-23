@@ -1,0 +1,911 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Logo } from "@/components/brand/Logo";
+import {
+  DollarSign,
+  TrendingUp,
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  MessageSquare,
+  Mail,
+  Zap,
+  ArrowRight,
+  ExternalLink,
+  RefreshCw,
+  Search,
+  Filter,
+  Sliders,
+  Settings,
+  ChevronRight,
+  PhoneCall,
+  X,
+  Play,
+  Calendar,
+} from "lucide-react";
+
+export default function DashboardPage() {
+  const [loading, setLoading] = useState(true);
+  const [kpis, setKpis] = useState<any>({
+    totalRecoveredCash: 0,
+    recoveryRate: 0,
+    retainedARR: 0,
+    activePipelines: 0,
+    totalFailedVolume: 0,
+  });
+  const [events, setEvents] = useState<any[]>([]);
+  const [merchant, setMerchant] = useState<any>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Modals state
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [selectedEventForTimeline, setSelectedEventForTimeline] = useState<any | null>(null);
+  const [timelineMessages, setTimelineMessages] = useState<any[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+
+  // Test simulation form state
+  const [testForm, setTestForm] = useState({
+    customerName: "Julian Hayes",
+    customerEmail: "julian@hayesgrowth.com",
+    customerPhone: "+1 (555) 849-2041",
+    amount: "249.00",
+    planName: "SaaS Enterprise Monthly",
+    isMissingPhone: false,
+  });
+  const [triggeringTest, setTriggeringTest] = useState(false);
+
+  // Settings form state
+  const [settingsForm, setSettingsForm] = useState({
+    quiet_hours_enabled: true,
+    quiet_hours_start: "22:00",
+    quiet_hours_end: "08:00",
+    stripe_webhook_secret: "",
+    meta_whatsapp_phone_number_id: "",
+    meta_whatsapp_token: "",
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSuccessMessage, setSettingsSuccessMessage] = useState("");
+
+  const fetchData = async () => {
+    try {
+      const res = await fetch("/api/dashboard/stats");
+      if (res.ok) {
+        const data = await res.json();
+        setKpis(data.kpis);
+        setEvents(data.events);
+        setMerchant(data.merchant);
+        if (data.merchant) {
+          setSettingsForm({
+            quiet_hours_enabled: data.merchant.quiet_hours_enabled ?? true,
+            quiet_hours_start: data.merchant.quiet_hours_start || "22:00",
+            quiet_hours_end: data.merchant.quiet_hours_end || "08:00",
+            stripe_webhook_secret: data.merchant.stripe_webhook_secret || "",
+            meta_whatsapp_phone_number_id: data.merchant.meta_whatsapp_phone_number_id || "",
+            meta_whatsapp_token: data.merchant.meta_whatsapp_token || "",
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const openTimeline = async (event: any) => {
+    setSelectedEventForTimeline(event);
+    setLoadingTimeline(true);
+    try {
+      const res = await fetch(`/api/dashboard/events/${event.id}/messages`);
+      if (res.ok) {
+        const data = await res.json();
+        setTimelineMessages(data.messages);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingTimeline(false);
+    }
+  };
+
+  const handleTriggerTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTriggeringTest(true);
+    try {
+      const res = await fetch("/api/dashboard/trigger-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: testForm.customerName,
+          customerEmail: testForm.customerEmail,
+          customerPhone: testForm.isMissingPhone ? "" : testForm.customerPhone,
+          amount: parseFloat(testForm.amount),
+          planName: testForm.planName,
+        }),
+      });
+      if (res.ok) {
+        setIsTestModalOpen(false);
+        await fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTriggeringTest(false);
+    }
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await fetch("/api/dashboard/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settingsForm),
+      });
+      if (res.ok) {
+        setSettingsSuccessMessage("Settings saved successfully!");
+        setTimeout(() => setSettingsSuccessMessage(""), 3000);
+        await fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleProcessDueMessages = async () => {
+    try {
+      await fetch("/api/scheduler/dunning", { method: "POST" });
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSimulatePaymentClearance = async (token: string) => {
+    try {
+      await fetch(`/api/pay/${token}`, { method: "POST" });
+      await fetchData();
+      if (selectedEventForTimeline) {
+        await openTimeline(selectedEventForTimeline);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Filter events
+  const filteredEvents = events.filter((ev) => {
+    const matchesStatus =
+      statusFilter === "ALL" ? true : ev.status === statusFilter;
+    const matchesSearch =
+      ev.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ev.customer_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ev.stripe_invoice_id?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
+
+  return (
+    <div className="min-h-screen bg-[#080F1C] text-slate-50 selection:bg-emerald-500 selection:text-black">
+      {/* Top Navbar */}
+      <header className="border-b border-white/[0.08] bg-[#080F1C]/90 backdrop-blur-md sticky top-0 z-40 px-6 h-16 flex items-center justify-between">
+        <div className="flex items-center space-x-6">
+          <Link href="/">
+            <Logo size="sm" />
+          </Link>
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs text-slate-300 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>{merchant?.company_name || "Stripe Production Guard"}</span>
+            <span className="text-slate-500">•</span>
+            <span className="text-emerald-400 font-semibold uppercase text-[10px] tracking-wider">
+              {merchant?.plan_tier || "Growth"} Tier
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setIsTestModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <Zap className="w-3.5 h-3.5 text-rose-400" />
+            <span>Simulate Stripe Decline</span>
+          </button>
+
+          <button
+            onClick={() => setIsSettingsModalOpen(true)}
+            className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition cursor-pointer"
+            title="Settings & Webhook Setup"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
+          <Link
+            href="/"
+            className="text-xs text-slate-400 hover:text-white transition px-2 py-1"
+          >
+            Landing Page
+          </Link>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Welcome & Live Status */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-50 tracking-tight">
+              Payment Recovery Engine
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Real-time audit log of WhatsApp dunning dispatches, Apple Pay conversions, and recovered ARR.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchData}
+              className="px-3 py-2 rounded-xl text-xs font-medium bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 transition flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            <button
+              onClick={handleProcessDueMessages}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black transition shadow-lg shadow-emerald-500/20 flex items-center gap-1.5"
+            >
+              <Play className="w-3.5 h-3.5 text-black fill-black" />
+              Process Due Reminders
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {/* Total Recovered Cash */}
+          <div className="bg-[#111C2E] border border-white/[0.08] rounded-2xl p-5 shadow-xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/15 transition" />
+            <div className="flex items-center justify-between text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+              <span>Total Recovered Cash</span>
+              <DollarSign className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-3xl sm:text-4xl font-black text-slate-50 font-mono tracking-tight mb-2">
+              ${kpis.totalRecoveredCash.toLocaleString()}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Direct to Merchant Stripe
+            </div>
+          </div>
+
+          {/* Recovery Rate */}
+          <div className="bg-[#111C2E] border border-white/[0.08] rounded-2xl p-5 shadow-xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-teal-500/10 rounded-full blur-2xl group-hover:bg-teal-500/15 transition" />
+            <div className="flex items-center justify-between text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+              <span>Recovery Rate</span>
+              <TrendingUp className="w-4 h-4 text-teal-400" />
+            </div>
+            <div className="text-3xl sm:text-4xl font-black text-slate-50 font-mono tracking-tight mb-2">
+              {kpis.recoveryRate}%
+            </div>
+            <div className="text-xs text-slate-400">
+              <strong className="text-teal-400 font-semibold">3.8x higher</strong> than email-only dunning
+            </div>
+          </div>
+
+          {/* Retained ARR */}
+          <div className="bg-[#111C2E] border border-white/[0.08] rounded-2xl p-5 shadow-xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/15 transition" />
+            <div className="flex items-center justify-between text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+              <span>Retained Annual ARR</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono tracking-tight mb-2">
+              +${kpis.retainedARR.toLocaleString()}
+            </div>
+            <div className="text-xs text-slate-400">
+              Annualized recurring savings
+            </div>
+          </div>
+
+          {/* Active Pipelines */}
+          <div className="bg-[#111C2E] border border-white/[0.08] rounded-2xl p-5 shadow-xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/15 transition" />
+            <div className="flex items-center justify-between text-xs text-slate-400 uppercase tracking-wider mb-2 font-medium">
+              <span>Active Pipelines</span>
+              <Clock className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div className="text-3xl sm:text-4xl font-black text-slate-50 font-mono tracking-tight mb-2">
+              {kpis.activePipelines}
+            </div>
+            <div className="text-xs text-slate-400">
+              Involuntarily churned accounts in grace
+            </div>
+          </div>
+        </div>
+
+        {/* Live Recovery Table Container */}
+        <div className="bg-[#111C2E] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
+          {/* Table Header & Controls */}
+          <div className="p-5 border-b border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-bold text-slate-50 flex items-center gap-2">
+                Live Dunning Audit Feed
+                <span className="text-[10px] font-mono bg-white/[0.06] text-slate-300 px-2 py-0.5 rounded-full">
+                  {filteredEvents.length} events
+                </span>
+              </h2>
+            </div>
+
+            {/* Filters & Search */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Search */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search customer, email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 text-xs bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 w-48 sm:w-56"
+                />
+              </div>
+
+              {/* Status Filter Tabs */}
+              <div className="flex bg-[#080F1C] p-0.5 rounded-xl border border-white/[0.08] text-xs">
+                {(["ALL", "RECOVERED", "PENDING", "PHONE_MISSING"] as const).map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                      statusFilter === status
+                        ? "bg-white/10 text-white shadow"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {status === "ALL"
+                      ? "All"
+                      : status === "RECOVERED"
+                      ? "Recovered"
+                      : status === "PENDING"
+                      ? "Pending"
+                      : "Missing Phone"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#080F1C]/60 text-slate-400 uppercase tracking-wider font-semibold border-b border-white/[0.06]">
+                <tr>
+                  <th className="py-3 px-5">Subscriber</th>
+                  <th className="py-3 px-5">Plan & Amount</th>
+                  <th className="py-3 px-5">Channel</th>
+                  <th className="py-3 px-5">Stage</th>
+                  <th className="py-3 px-5">Status</th>
+                  <th className="py-3 px-5">Created</th>
+                  <th className="py-3 px-5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.06]">
+                {filteredEvents.map((ev) => {
+                  const formattedAmt = new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: ev.currency || "USD",
+                  }).format(ev.amount);
+
+                  return (
+                    <tr
+                      key={ev.id}
+                      className="hover:bg-white/[0.02] transition group"
+                    >
+                      {/* Subscriber */}
+                      <td className="py-4 px-5">
+                        <div className="font-bold text-slate-100">{ev.customer_name}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{ev.customer_email}</div>
+                        {ev.customer_phone ? (
+                          <div className="text-[10px] text-slate-500">{ev.customer_phone}</div>
+                        ) : (
+                          <div className="text-[10px] text-rose-400 font-medium">No Phone Number</div>
+                        )}
+                      </td>
+
+                      {/* Plan & Amount */}
+                      <td className="py-4 px-5">
+                        <div className="font-semibold text-slate-200">{ev.plan_name || "Subscription"}</div>
+                        <div className="font-mono font-bold text-emerald-400 text-sm">
+                          {formattedAmt}
+                        </div>
+                      </td>
+
+                      {/* Channel */}
+                      <td className="py-4 px-5">
+                        {ev.customer_phone ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                            <MessageSquare className="w-3 h-3 text-emerald-400" />
+                            WhatsApp
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                            <Mail className="w-3 h-3 text-blue-400" />
+                            Email Fallback
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Stage */}
+                      <td className="py-4 px-5">
+                        <div className="font-semibold text-slate-300">
+                          Stage {ev.current_stage || 1}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {ev.current_stage === 1
+                            ? "Day 0 Instant"
+                            : ev.current_stage === 2
+                            ? "Day 2 Reminder"
+                            : "Day 4 Final Notice"}
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-4 px-5">
+                        {ev.status === "RECOVERED" && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            RECOVERED
+                          </span>
+                        )}
+                        {ev.status === "PENDING" && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            <Clock className="w-3 h-3 text-amber-400" />
+                            PENDING
+                          </span>
+                        )}
+                        {ev.status === "PHONE_MISSING" && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                            <AlertCircle className="w-3 h-3 text-rose-400" />
+                            PHONE MISSING
+                          </span>
+                        )}
+                        {ev.status === "CHURNED" && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                            CHURNED
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Created */}
+                      <td className="py-4 px-5 text-slate-400 text-[11px]">
+                        {new Date(ev.created_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-4 px-5 text-right space-x-2">
+                        <button
+                          onClick={() => openTimeline(ev)}
+                          className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white transition text-[11px] font-medium cursor-pointer"
+                        >
+                          Timeline
+                        </button>
+
+                        <a
+                          href={`/pay/${ev.pay_token}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 transition text-[11px] font-medium cursor-pointer"
+                        >
+                          Pay Link
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {filteredEvents.length === 0 && (
+              <div className="text-center py-12 text-slate-500 text-xs">
+                No recovery events found matching the criteria.
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Timeline / Sequence Inspector Modal */}
+      {/* ------------------------------------------------------------------ */}
+      {selectedEventForTimeline && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#111C2E] border border-white/[0.1] rounded-3xl w-full max-w-2xl p-6 sm:p-8 shadow-2xl relative">
+            <button
+              onClick={() => setSelectedEventForTimeline(null)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl bg-white/[0.04]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="mb-6">
+              <span className="text-xs uppercase tracking-wider text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+                Multi-Stage Dunning Pipeline
+              </span>
+              <h3 className="text-xl font-bold text-slate-50 mt-3">
+                {selectedEventForTimeline.customer_name} ({selectedEventForTimeline.stripe_invoice_id})
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Amount: ${selectedEventForTimeline.amount} {selectedEventForTimeline.currency} • Status:{" "}
+                <span className="text-emerald-400 font-semibold">{selectedEventForTimeline.status}</span>
+              </p>
+            </div>
+
+            {loadingTimeline ? (
+              <div className="py-12 flex justify-center text-slate-400">
+                <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+              </div>
+            ) : (
+              <div className="space-y-4 mb-6">
+                {timelineMessages.map((msg, idx) => (
+                  <div
+                    key={msg.id || idx}
+                    className="bg-[#080F1C] border border-white/[0.08] rounded-2xl p-4 text-xs"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-200">
+                          Stage {msg.stage}:{" "}
+                          {msg.stage === 1
+                            ? "Day 0 Instant Nudge"
+                            : msg.stage === 2
+                            ? "Day 2 Reminder (+48h)"
+                            : "Day 4 Final Notice (+96h)"}
+                        </span>
+                        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-white/[0.06] text-slate-400">
+                          {msg.channel}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                          msg.status === "delivered" || msg.status === "sent"
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            : msg.status === "cancelled"
+                            ? "bg-slate-500/10 text-slate-400"
+                            : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+                        }`}
+                      >
+                        {msg.status}
+                      </span>
+                    </div>
+
+                    <p className="text-slate-300 leading-relaxed mb-2 font-mono text-[11px] bg-black/40 p-2.5 rounded-xl border border-white/[0.04]">
+                      {msg.body}
+                    </p>
+
+                    <div className="flex flex-wrap justify-between text-[10px] text-slate-500">
+                      <span>Scheduled: {new Date(msg.scheduled_for).toLocaleString()}</span>
+                      {msg.sent_at && <span>Dispatched: {new Date(msg.sent_at).toLocaleString()}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Circuit Breaker Demo Action */}
+            <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between">
+              <a
+                href={`/pay/${selectedEventForTimeline.pay_token}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold"
+              >
+                Open 1-Click Pay View
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
+              {selectedEventForTimeline.status !== "RECOVERED" && (
+                <button
+                  onClick={() => handleSimulatePaymentClearance(selectedEventForTimeline.pay_token)}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition cursor-pointer"
+                >
+                  Simulate Customer 1-Click Settle
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Trigger Test Payment Failure Modal */}
+      {/* ------------------------------------------------------------------ */}
+      {isTestModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#111C2E] border border-white/[0.1] rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl relative">
+            <button
+              onClick={() => setIsTestModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl bg-white/[0.04]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="w-5 h-5 text-rose-400" />
+              <h3 className="text-lg font-bold text-slate-50">
+                Trigger Mock Stripe Payment Failure
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400 mb-6">
+              Simulates an <code>invoice.payment_failed</code> event to test the 3-stage sequence,
+              quiet hours compliance, and emergency fallback.
+            </p>
+
+            <form onSubmit={handleTriggerTest} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Subscriber Name</label>
+                <input
+                  type="text"
+                  required
+                  value={testForm.customerName}
+                  onChange={(e) => setTestForm({ ...testForm, customerName: e.target.value })}
+                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Billing Email</label>
+                <input
+                  type="email"
+                  required
+                  value={testForm.customerEmail}
+                  onChange={(e) => setTestForm({ ...testForm, customerEmail: e.target.value })}
+                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-semibold">WhatsApp Phone Number</label>
+                  <label className="flex items-center gap-1.5 text-[11px] text-amber-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={testForm.isMissingPhone}
+                      onChange={(e) => setTestForm({ ...testForm, isMissingPhone: e.target.checked })}
+                      className="rounded accent-emerald-500"
+                    />
+                    Test Missing Phone Fallback
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  disabled={testForm.isMissingPhone}
+                  value={testForm.customerPhone}
+                  onChange={(e) => setTestForm({ ...testForm, customerPhone: e.target.value })}
+                  placeholder="+1 (555) 000-0000"
+                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 disabled:opacity-40"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Amount ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={testForm.amount}
+                    onChange={(e) => setTestForm({ ...testForm, amount: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Plan Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={testForm.planName}
+                    onChange={(e) => setTestForm({ ...testForm, planName: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  disabled={triggeringTest}
+                  className="w-full py-3 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-rose-500/20"
+                >
+                  {triggeringTest ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Ingesting Webhook...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" /> Fire Payment Failed Webhook
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Settings Modal */}
+      {/* ------------------------------------------------------------------ */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#111C2E] border border-white/[0.1] rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl relative">
+            <button
+              onClick={() => setIsSettingsModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl bg-white/[0.04]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-lg font-bold text-slate-50 mb-1 flex items-center gap-2">
+              <Settings className="w-5 h-5 text-emerald-400" />
+              Settings & Integrations
+            </h3>
+            <p className="text-xs text-slate-400 mb-6">
+              Connect your Stripe webhook endpoint and Meta WhatsApp Cloud API credentials.
+            </p>
+
+            {settingsSuccessMessage && (
+              <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                {settingsSuccessMessage}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSettings} className="space-y-4 text-xs">
+              {/* Webhook URL Copy */}
+              <div className="bg-[#080F1C] border border-white/[0.08] rounded-xl p-3">
+                <div className="text-[11px] text-slate-400 font-semibold mb-1">
+                  Your Stripe Webhook Destination URL:
+                </div>
+                <div className="font-mono text-[11px] text-emerald-400 select-all break-all">
+                  https://dunnify.com/api/webhooks/stripe
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  Listen for: <code>invoice.payment_failed</code>, <code>invoice.payment_succeeded</code>
+                </div>
+              </div>
+
+              {/* Stripe Webhook Secret */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Stripe Webhook Signing Secret (whsec_...)
+                </label>
+                <input
+                  type="password"
+                  placeholder="whsec_..."
+                  value={settingsForm.stripe_webhook_secret}
+                  onChange={(e) =>
+                    setSettingsForm({ ...settingsForm, stripe_webhook_secret: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 font-mono"
+                />
+              </div>
+
+              {/* Meta WhatsApp Phone Number ID */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Meta WhatsApp Phone Number ID
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 109283921092"
+                  value={settingsForm.meta_whatsapp_phone_number_id}
+                  onChange={(e) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      meta_whatsapp_phone_number_id: e.target.value,
+                    })
+                  }
+                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 font-mono"
+                />
+              </div>
+
+              {/* Meta WhatsApp System User Access Token */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Meta System User Access Token
+                </label>
+                <input
+                  type="password"
+                  placeholder="EAAG..."
+                  value={settingsForm.meta_whatsapp_token}
+                  onChange={(e) =>
+                    setSettingsForm({ ...settingsForm, meta_whatsapp_token: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 font-mono"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Leave empty to operate in Sandbox Simulation mode for zero-token testing.
+                </p>
+              </div>
+
+              {/* Quiet Hours Compliance Settings */}
+              <div className="bg-[#080F1C] border border-white/[0.08] rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-200">Quiet Hours Compliance</div>
+                    <div className="text-[10px] text-slate-400">
+                      Queue messages overnight to prevent disturbing subscribers.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settingsForm.quiet_hours_enabled}
+                    onChange={(e) =>
+                      setSettingsForm({ ...settingsForm, quiet_hours_enabled: e.target.checked })
+                    }
+                    className="accent-emerald-500 rounded"
+                  />
+                </div>
+
+                {settingsForm.quiet_hours_enabled && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <span className="text-[10px] text-slate-400">Quiet Start (Night):</span>
+                      <input
+                        type="time"
+                        value={settingsForm.quiet_hours_start}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, quiet_hours_start: e.target.value })
+                        }
+                        className="w-full px-2 py-1 bg-[#111C2E] border border-white/[0.08] rounded-lg text-slate-200 mt-1"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400">Resume Send (Morning):</span>
+                      <input
+                        type="time"
+                        value={settingsForm.quiet_hours_end}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, quiet_hours_end: e.target.value })
+                        }
+                        className="w-full px-2 py-1 bg-[#111C2E] border border-white/[0.08] rounded-lg text-slate-200 mt-1"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  {savingSettings ? "Saving Settings..." : "Save Configuration"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
