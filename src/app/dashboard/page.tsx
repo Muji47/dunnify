@@ -33,6 +33,7 @@ import {
   Sparkles,
   LogOut,
   User,
+  FastForward,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -85,6 +86,8 @@ export default function DashboardPage() {
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccessMessage, setSettingsSuccessMessage] = useState("");
+  const [timeMachineLoading, setTimeMachineLoading] = useState(false);
+  const [timeMachineFeedback, setTimeMachineFeedback] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -321,6 +324,33 @@ export default function DashboardPage() {
     }
   };
 
+  const handleTimeMachineAdvance = async (hours: number) => {
+    setTimeMachineLoading(true);
+    setTimeMachineFeedback(null);
+    try {
+      const res = await fetch("/api/scheduler/dunning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ advanceHours: hours }),
+      });
+      const data = await res.json();
+      setTimeMachineFeedback(
+        `Time-Machine advanced +${hours}h: ${data.acceleratedCount ?? 0} scheduled message(s) accelerated, ${data.processedCount ?? 0} dispatched.`
+      );
+      await fetchData();
+      if (selectedEventForTimeline) {
+        await openTimeline(selectedEventForTimeline);
+      }
+      setTimeout(() => setTimeMachineFeedback(null), 6000);
+    } catch (err) {
+      console.error("Time Machine error:", err);
+      setTimeMachineFeedback("Failed to trigger Time-Machine advance.");
+      setTimeout(() => setTimeMachineFeedback(null), 5000);
+    } finally {
+      setTimeMachineLoading(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -460,13 +490,31 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={fetchData}
               className="px-3 py-2 rounded-xl text-xs font-medium bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 transition flex items-center gap-1.5"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               Refresh
+            </button>
+            <button
+              onClick={() => handleTimeMachineAdvance(48)}
+              disabled={timeMachineLoading}
+              title="Time-Machine: Advance scheduled dunning queue by 48h to trigger Stage 2 (Gentle Reminder) immediately"
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 transition flex items-center gap-1.5"
+            >
+              <FastForward className={`w-3.5 h-3.5 text-indigo-400 ${timeMachineLoading ? "animate-pulse" : ""}`} />
+              <span>Time-Machine (+48h)</span>
+            </button>
+            <button
+              onClick={() => handleTimeMachineAdvance(96)}
+              disabled={timeMachineLoading}
+              title="Time-Machine: Advance scheduled dunning queue by 96h to trigger Stage 3 (Final Notice) immediately"
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5"
+            >
+              <FastForward className={`w-3.5 h-3.5 text-amber-400 ${timeMachineLoading ? "animate-pulse" : ""}`} />
+              <span>Time-Machine (+96h)</span>
             </button>
             <button
               onClick={handleProcessDueMessages}
@@ -477,6 +525,22 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+
+        {/* Time-Machine Notification Banner */}
+        {timeMachineFeedback && (
+          <div className="mb-6 p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-200 text-xs font-medium flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FastForward className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span>{timeMachineFeedback}</span>
+            </div>
+            <button
+              onClick={() => setTimeMachineFeedback(null)}
+              className="text-indigo-400 hover:text-indigo-200 text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* KPI Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

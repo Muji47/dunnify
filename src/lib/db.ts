@@ -440,6 +440,37 @@ export const db = {
     return newMsg;
   },
 
+  async updateDunningMessage(
+    id: string,
+    updates: Partial<DunningMessage>
+  ): Promise<DunningMessage | null> {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("dunning_messages")
+          .update(updates)
+          .eq("id", id)
+          .select()
+          .single();
+        if (!error && data) return data as DunningMessage;
+      } catch (e) {
+        console.warn("[Dunnify DB] Supabase updateDunningMessage error:", e);
+      }
+    }
+
+    const disk = readDiskDb();
+    if (disk.dunning_messages[id]) {
+      disk.dunning_messages[id] = {
+        ...disk.dunning_messages[id],
+        ...updates,
+      };
+      writeDiskDb(disk);
+      return disk.dunning_messages[id];
+    }
+
+    return null;
+  },
+
   async getDunningMessagesForEvent(eventId: string): Promise<DunningMessage[]> {
     if (supabase) {
       const { data, error } = await supabase

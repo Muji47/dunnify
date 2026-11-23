@@ -5,6 +5,7 @@ import {
   WhatsAppMessageResult,
 } from "./whatsapp";
 import { sendEmergencyDunningEmail } from "./email";
+import { scheduleDunningMessageWithQStash } from "./qstash";
 
 export interface ScheduleSequenceParams {
   merchantId?: string;
@@ -170,7 +171,7 @@ export async function initiateDunningSequence(
     day2Base
   );
 
-  await db.createDunningMessage({
+  const msg2 = await db.createDunningMessage({
     recovery_event_id: recoveryEvent.id,
     stage: 2,
     channel: "whatsapp",
@@ -190,7 +191,7 @@ export async function initiateDunningSequence(
     day4Base
   );
 
-  await db.createDunningMessage({
+  const msg3 = await db.createDunningMessage({
     recovery_event_id: recoveryEvent.id,
     stage: 3,
     channel: "whatsapp",
@@ -201,9 +202,19 @@ export async function initiateDunningSequence(
     action_url: actionUrl,
   });
 
-  // Optional: Forward to Upstash QStash if QSTASH_TOKEN is configured
-  publishToQStashIfConfigured(recoveryEvent.id, stage2Delivery.scheduledTime, 2);
-  publishToQStashIfConfigured(recoveryEvent.id, stage3Delivery.scheduledTime, 3);
+  // Schedule delayed serverless jobs in Upstash QStash queue (if configured)
+  scheduleDunningMessageWithQStash({
+    eventId: recoveryEvent.id,
+    stage: 2,
+    scheduledFor: stage2Delivery.scheduledTime,
+    dunningMessageId: msg2.id,
+  });
+  scheduleDunningMessageWithQStash({
+    eventId: recoveryEvent.id,
+    stage: 3,
+    scheduledFor: stage3Delivery.scheduledTime,
+    dunningMessageId: msg3.id,
+  });
 
   return {
     recoveryEvent,
@@ -266,7 +277,7 @@ export async function processDueScheduledMessages(): Promise<{
     const event = await db.getRecoveryEventById(msg.recovery_event_id);
     if (!event || event.status === "RECOVERED") {
       // Circuit breaker safety: if already recovered, cancel
-      msg.status = "cancelled";
+      await db.updateDunningMessage(msg.id, { status: "cancelled" });
       continue;
     }
 
@@ -282,10 +293,13 @@ export async function processDueScheduledMessages(): Promise<{
         invoiceId: event.stripe_invoice_id,
       });
 
-      msg.status = dispatchResult.success ? "delivered" : "failed";
-      msg.sent_at = new Date().toISOString();
-      msg.message_id = dispatchResult.messageId;
-      msg.error_message = dispatchResult.error;
+      const sentStatus = dispatchResult.success ? "delivered" : "failed";
+      await db.updateDunningMessage(msg.id, {
+        status: sentStatus,
+        sent_at: new Date().toISOString(),
+        message_id: dispatchResult.messageId,
+        error_message: dispatchResult.error,
+      });
 
       // Update current stage on the event
       await db.updateRecoveryEvent(event.id, {
@@ -300,34 +314,4 @@ export async function processDueScheduledMessages(): Promise<{
     processedCount: results.length,
     results,
   };
-}
-
-async function publishToQStashIfConfigured(
-  eventId: string,
-  scheduledTime: Date,
-  stage: DunningStage
-) {
-  const qstashToken = process.env.QSTASH_TOKEN;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dunnify.com";
-
-  if (!qstashToken) return;
-
-  try {
-    const delaySeconds = Math.max(
-      0,
-      Math.floor((scheduledTime.getTime() - Date.now()) / 1000)
-    );
-
-    await fetch(`https://qstash.upstash.io/v2/publish/${appUrl}/api/scheduler/dunning`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${qstashToken}`,
-        "Content-Type": "application/json",
-        "Upstash-Delay": `${delaySeconds}s`,
-      },
-      body: JSON.stringify({ eventId, stage }),
-    });
-  } catch (err) {
-    console.error("[QStash Publish Error]", err);
-  }
 }
