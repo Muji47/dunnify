@@ -257,7 +257,7 @@ export const db = {
   async createRecoveryEvent(
     data: Omit<RecoveryEvent, "id" | "created_at" | "updated_at">
   ): Promise<RecoveryEvent> {
-    const id = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = (data as any).id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, "0")}`);
     const now = new Date().toISOString();
     const newEvent: RecoveryEvent = {
       ...data,
@@ -274,6 +274,7 @@ export const db = {
           .select()
           .single();
         if (!error && inserted) return inserted as RecoveryEvent;
+        if (error) console.error("[Dunnify DB] Supabase createRecoveryEvent error:", error);
       } catch (e) {
         console.warn("[Dunnify DB] Supabase insert fallback:", e);
       }
@@ -344,7 +345,7 @@ export const db = {
   async createDunningMessage(
     data: Omit<DunningMessage, "id" | "created_at">
   ): Promise<DunningMessage> {
-    const id = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = (data as any).id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, "0")}`);
     const now = new Date().toISOString();
     const newMsg: DunningMessage = {
       ...data,
@@ -360,6 +361,7 @@ export const db = {
           .select()
           .single();
         if (!error && inserted) return inserted as DunningMessage;
+        if (error) console.error("[Dunnify DB] Supabase createDunningMessage error:", error);
       } catch (e) {
         // fallback
       }
