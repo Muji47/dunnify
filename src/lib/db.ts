@@ -150,6 +150,65 @@ export const db = {
     return disk.merchants[id] || defaultMerchant;
   },
 
+  async getMerchantByEmail(email: string): Promise<Merchant | null> {
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("merchants")
+        .select("*")
+        .eq("email", email.toLowerCase())
+        .single();
+      if (!error && data) return data as Merchant;
+    }
+
+    const disk = readDiskDb();
+    for (const m of Object.values(disk.merchants)) {
+      if (m.email.toLowerCase() === email.toLowerCase()) return m;
+    }
+    return null;
+  },
+
+  async createMerchant(merchantData: Partial<Merchant> & { email: string; name: string }): Promise<Merchant> {
+    const id = merchantData.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : defaultMerchant.id);
+    const now = new Date().toISOString();
+
+    const newMerchant: Merchant = {
+      id,
+      name: merchantData.name,
+      email: merchantData.email.toLowerCase(),
+      company_name: merchantData.company_name || `${merchantData.name}'s Company`,
+      plan_tier: merchantData.plan_tier || "growth",
+      quiet_hours_enabled: merchantData.quiet_hours_enabled ?? true,
+      quiet_hours_start: merchantData.quiet_hours_start || "22:00",
+      quiet_hours_end: merchantData.quiet_hours_end || "08:00",
+      stripe_account_id: merchantData.stripe_account_id,
+      stripe_webhook_secret: merchantData.stripe_webhook_secret,
+      meta_whatsapp_phone_number_id: merchantData.meta_whatsapp_phone_number_id,
+      meta_whatsapp_token: merchantData.meta_whatsapp_token,
+      created_at: now,
+      updated_at: now,
+    };
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("merchants")
+          .upsert(newMerchant, { onConflict: "email" })
+          .select()
+          .single();
+        if (!error && data) return data as Merchant;
+        if (error) console.error("[Dunnify DB] Supabase createMerchant error:", error);
+      } catch (err) {
+        console.warn("[Dunnify DB] Supabase merchant upsert fallback:", err);
+      }
+    }
+
+    const disk = readDiskDb();
+    disk.merchants[id] = newMerchant;
+    writeDiskDb(disk);
+
+    return newMerchant;
+  },
+
   async updateMerchantSettings(id: string, updates: Partial<Merchant>): Promise<Merchant> {
     const existing = await this.getMerchant(id);
     const updated = {
@@ -171,6 +230,7 @@ export const db = {
 
   // Recovery events operations
   async listRecoveryEvents(filter?: {
+    merchant_id?: string;
     status?: RecoveryStatus;
     limit?: number;
   }): Promise<RecoveryEvent[]> {
@@ -179,6 +239,9 @@ export const db = {
         .from("recovery_events")
         .select("*")
         .order("created_at", { ascending: false });
+      if (filter?.merchant_id) {
+        query = query.eq("merchant_id", filter.merchant_id);
+      }
       if (filter?.status) {
         query = query.eq("status", filter.status);
       }
@@ -194,6 +257,9 @@ export const db = {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
+    if (filter?.merchant_id) {
+      events = events.filter((e) => e.merchant_id === filter.merchant_id);
+    }
     if (filter?.status) {
       events = events.filter((e) => e.status === filter.status);
     }
@@ -406,8 +472,8 @@ export const db = {
   },
 
   // Calculate live Merchant KPIs
-  async getDashboardKPIs(): Promise<DashboardKPIs> {
-    const events = await this.listRecoveryEvents();
+  async getDashboardKPIs(merchantId?: string): Promise<DashboardKPIs> {
+    const events = await this.listRecoveryEvents(merchantId ? { merchant_id: merchantId } : undefined);
 
     let totalRecoveredCash = 0;
     let totalFailedVolume = 0;

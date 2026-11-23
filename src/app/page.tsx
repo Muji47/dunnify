@@ -142,17 +142,17 @@ export default function Home() {
 
           <div className="flex items-center space-x-3">
             <Link
-              href="/dashboard"
-              className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.1] transition"
+              href="/login"
+              className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/[0.04] transition"
             >
-              Merchant Portal
+              Sign In
             </Link>
-            <a
-              href="#demo"
+            <Link
+              href="/signup"
               className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-black transition shadow-lg shadow-emerald-500/20"
             >
-              Try Simulation
-            </a>
+              Start Free Trial
+            </Link>
           </div>
         </div>
       </header>

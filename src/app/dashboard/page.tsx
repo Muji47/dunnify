@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import confetti from "canvas-confetti";
 import { Logo } from "@/components/brand/Logo";
 import { getSupabaseBrowserClient } from "@/lib/supabase-client";
@@ -30,9 +31,12 @@ import {
   Calendar,
   Radio,
   Sparkles,
+  LogOut,
+  User,
 } from "lucide-react";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [kpis, setKpis] = useState<any>({
     totalRecoveredCash: 0,
@@ -317,6 +321,16 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch (err) {
+      console.error("Sign out error:", err);
+    }
+  };
+
   const handleSimulatePaymentClearance = async (token: string) => {
     try {
       await fetch(`/api/pay/${token}`, { method: "POST" });
@@ -401,10 +415,35 @@ export default function DashboardPage() {
 
           <Link
             href="/"
-            className="text-xs text-slate-400 hover:text-white transition px-2 py-1"
+            className="text-xs text-slate-400 hover:text-white transition px-2 py-1 hidden md:block"
           >
-            Landing Page
+            Landing
           </Link>
+
+          {/* User Profile & Sign Out */}
+          <div className="flex items-center gap-2 pl-2 border-l border-white/[0.08]">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-black font-bold text-xs flex items-center justify-center shadow-md">
+                {merchant?.name ? merchant.name.substring(0, 2).toUpperCase() : "FM"}
+              </div>
+              <div className="hidden lg:block text-left">
+                <div className="text-xs font-bold text-slate-200 leading-tight">
+                  {merchant?.name || "Founder Merchant"}
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono leading-tight">
+                  {merchant?.email || "founder@dunnify.com"}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSignOut}
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 bg-white/[0.04] border border-white/[0.08] hover:bg-rose-500/10 hover:border-rose-500/20 transition cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
