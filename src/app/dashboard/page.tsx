@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
+import confetti from "canvas-confetti";
 import { Logo } from "@/components/brand/Logo";
+import { getSupabaseBrowserClient } from "@/lib/supabase-client";
+import { RealtimeToasts, DashboardToast } from "@/components/dashboard/RealtimeToasts";
 import {
   DollarSign,
   TrendingUp,
@@ -25,6 +28,8 @@ import {
   X,
   Play,
   Calendar,
+  Radio,
+  Sparkles,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -40,6 +45,12 @@ export default function DashboardPage() {
   const [merchant, setMerchant] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Realtime WebSocket state
+  const [realtimeStatus, setRealtimeStatus] = useState<"SUBSCRIBED" | "CONNECTING" | "DISCONNECTED">("CONNECTING");
+  const [realtimeEventCount, setRealtimeEventCount] = useState<number>(0);
+  const [toasts, setToasts] = useState<DashboardToast[]>([]);
+  const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
 
   // Modals state
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -71,7 +82,7 @@ export default function DashboardPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccessMessage, setSettingsSuccessMessage] = useState("");
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const res = await fetch("/api/dashboard/stats");
       if (res.ok) {
@@ -95,13 +106,9 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
   }, []);
 
-  const openTimeline = async (event: any) => {
+  const openTimeline = useCallback(async (event: any) => {
     setSelectedEventForTimeline(event);
     setLoadingTimeline(true);
     try {
@@ -115,7 +122,144 @@ export default function DashboardPage() {
     } finally {
       setLoadingTimeline(false);
     }
-  };
+  }, []);
+
+  // Initial fetch and Realtime WebSocket Subscription
+  useEffect(() => {
+    fetchData();
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setRealtimeStatus("DISCONNECTED");
+      return;
+    }
+
+    const channel = supabase
+      .channel("dunnify-dashboard-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "recovery_events" },
+        (payload) => {
+          console.log("[Supabase Realtime recovery_events]", payload.eventType, payload);
+          setRealtimeEventCount((prev) => prev + 1);
+
+          if (payload.eventType === "INSERT") {
+            const newEvent = payload.new as any;
+            setEvents((prev) => {
+              if (prev.some((e) => e.id === newEvent.id || e.stripe_invoice_id === newEvent.stripe_invoice_id)) {
+                return prev;
+              }
+              return [newEvent, ...prev];
+            });
+
+            setHighlightedRowId(newEvent.id);
+            setTimeout(() => setHighlightedRowId(null), 6000);
+
+            // Add Toast
+            const toastId = `toast_${Date.now()}`;
+            setToasts((prev) => [
+              {
+                id: toastId,
+                type: "failed_payment",
+                title: "Failed Payment Ingested",
+                message: `Stripe invoice failed for ${newEvent.customer_name}. WhatsApp Stage 1 sequence initiated!`,
+                amount: newEvent.amount,
+                currency: newEvent.currency,
+                timestamp: new Date().toISOString(),
+                onAction: () => openTimeline(newEvent),
+                actionLabel: "Inspect Dunning Nudge",
+              },
+              ...prev.slice(0, 2),
+            ]);
+            setTimeout(() => {
+              setToasts((prev) => prev.filter((t) => t.id !== toastId));
+            }, 8000);
+
+            fetchData();
+          } else if (payload.eventType === "UPDATE") {
+            const updated = payload.new as any;
+            setEvents((prev) =>
+              prev.map((e) => (e.id === updated.id ? { ...e, ...updated } : e))
+            );
+
+            setHighlightedRowId(updated.id);
+            setTimeout(() => setHighlightedRowId(null), 6000);
+
+            if (updated.status === "RECOVERED") {
+              // Confetti burst for recovered revenue!
+              try {
+                confetti({
+                  particleCount: 100,
+                  spread: 80,
+                  origin: { y: 0.6 },
+                  colors: ["#10B981", "#34D399", "#059669", "#6EE7B7", "#F8FAFC"],
+                });
+              } catch (e) {
+                // ignore
+              }
+
+              const toastId = `toast_${Date.now()}`;
+              setToasts((prev) => [
+                {
+                  id: toastId,
+                  type: "recovered",
+                  title: "Payment Successfully Recovered!",
+                  message: `1-Click recovery cleared for ${updated.customer_name}. Circuit Breaker cancelled subsequent nudges!`,
+                  amount: updated.amount,
+                  currency: updated.currency,
+                  timestamp: new Date().toISOString(),
+                  onAction: () => openTimeline(updated),
+                  actionLabel: "View Receipt",
+                },
+                ...prev.slice(0, 2),
+              ]);
+              setTimeout(() => {
+                setToasts((prev) => prev.filter((t) => t.id !== toastId));
+              }, 8000);
+            }
+
+            setSelectedEventForTimeline((prev: any) => {
+              if (prev && prev.id === updated.id) {
+                return { ...prev, ...updated };
+              }
+              return prev;
+            });
+
+            fetchData();
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "dunning_messages" },
+        (payload) => {
+          console.log("[Supabase Realtime dunning_messages]", payload.eventType, payload);
+          setRealtimeEventCount((prev) => prev + 1);
+
+          const msg = payload.new as any;
+          setSelectedEventForTimeline((prev: any) => {
+            if (prev && prev.id === msg.recovery_event_id) {
+              openTimeline(prev);
+            }
+            return prev;
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log("[Supabase Realtime Subscription Status]:", status);
+        if (status === "SUBSCRIBED") {
+          setRealtimeStatus("SUBSCRIBED");
+        } else if (status === "TIMED_OUT" || status === "CLOSED" || status === "CHANNEL_ERROR") {
+          setRealtimeStatus("DISCONNECTED");
+        } else {
+          setRealtimeStatus("CONNECTING");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData, openTimeline]);
 
   const handleTriggerTest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -211,6 +355,30 @@ export default function DashboardPage() {
             <span className="text-emerald-400 font-semibold uppercase text-[10px] tracking-wider">
               {merchant?.plan_tier || "Growth"} Tier
             </span>
+          </div>
+
+          {/* Realtime WebSocket Stream Badge */}
+          <div className="flex items-center gap-2">
+            {realtimeStatus === "SUBSCRIBED" ? (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-400 font-medium">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+                <span className="font-bold text-[11px] tracking-wide">LIVE WEBSOCKET</span>
+                <span className="text-emerald-400/60 font-mono text-[10px]">({realtimeEventCount} synced)</span>
+              </div>
+            ) : realtimeStatus === "CONNECTING" ? (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 font-medium">
+                <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                <span className="font-bold text-[11px]">CONNECTING STREAM...</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs text-slate-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-slate-500" />
+                <span className="font-medium text-[11px]">POLLING BACKUP</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -411,11 +579,20 @@ export default function DashboardPage() {
                   return (
                     <tr
                       key={ev.id}
-                      className="hover:bg-white/[0.02] transition group"
+                      className={`hover:bg-white/[0.02] transition-all duration-500 group ${
+                        ev.id === highlightedRowId
+                          ? "bg-emerald-500/15 ring-2 ring-emerald-400 shadow-xl shadow-emerald-500/20"
+                          : ""
+                      }`}
                     >
                       {/* Subscriber */}
                       <td className="py-4 px-5">
-                        <div className="font-bold text-slate-100">{ev.customer_name}</div>
+                        <div className="font-bold text-slate-100 flex items-center gap-1.5">
+                          {ev.customer_name}
+                          {ev.id === highlightedRowId && (
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          )}
+                        </div>
                         <div className="text-[11px] text-slate-400 font-mono">{ev.customer_email}</div>
                         {ev.customer_phone ? (
                           <div className="text-[10px] text-slate-500">{ev.customer_phone}</div>
@@ -500,6 +677,16 @@ export default function DashboardPage() {
 
                       {/* Actions */}
                       <td className="py-4 px-5 text-right space-x-2">
+                        {ev.status === "PENDING" && (
+                          <button
+                            onClick={() => handleSimulatePaymentClearance(ev.pay_token)}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 font-bold transition text-[11px] cursor-pointer"
+                            title="Simulate subscriber paying via 1-Click Apple Pay"
+                          >
+                            Settle
+                          </button>
+                        )}
+
                         <button
                           onClick={() => openTimeline(ev)}
                           className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white transition text-[11px] font-medium cursor-pointer"
@@ -906,6 +1093,11 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+      {/* Realtime Floating Toast Stack */}
+      <RealtimeToasts
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+      />
     </div>
   );
 }
