@@ -22,11 +22,30 @@ export interface FailedPaymentPayload {
 }
 
 export function parseFailedInvoice(invoice: Stripe.Invoice): FailedPaymentPayload {
-  const amount = invoice.amount_due ? invoice.amount_due / 100 : 0;
+  const amount = invoice.amount_due
+    ? invoice.amount_due / 100
+    : (invoice as any).total
+    ? (invoice as any).total / 100
+    : 149.0;
+
   const currency = (invoice.currency || "usd").toUpperCase();
-  const customerName = invoice.customer_name || invoice.customer_email || "Customer";
-  const customerEmail = invoice.customer_email || "";
-  const hostedInvoiceUrl = invoice.hosted_invoice_url || undefined;
+  const customerId =
+    typeof invoice.customer === "string"
+      ? invoice.customer
+      : invoice.customer?.id || "cus_stripe_cli";
+
+  const customerName =
+    invoice.customer_name ||
+    (invoice.customer_email ? invoice.customer_email.split("@")[0] : null) ||
+    "Stripe Subscriber";
+
+  const customerEmail =
+    invoice.customer_email ||
+    (invoice.metadata && invoice.metadata.email) ||
+    `${customerId}@billing.example.com`;
+
+  const hostedInvoiceUrl =
+    invoice.hosted_invoice_url || `https://pay.stripe.com/invoice/${invoice.id}`;
 
   // Plan name extraction
   const lineItem = invoice.lines?.data?.[0];
@@ -34,7 +53,7 @@ export function parseFailedInvoice(invoice: Stripe.Invoice): FailedPaymentPayloa
     lineItem?.description ||
     (lineItem as any)?.plan?.nickname ||
     invoice.metadata?.plan_name ||
-    "Monthly Subscription";
+    "Pro SaaS Subscription";
 
   // Phone might be in invoice metadata, customer metadata, or customer_phone
   const customerPhone =
@@ -43,8 +62,8 @@ export function parseFailedInvoice(invoice: Stripe.Invoice): FailedPaymentPayloa
     undefined;
 
   return {
-    invoiceId: invoice.id,
-    customerId: typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || "",
+    invoiceId: invoice.id || `in_cli_${Date.now()}`,
+    customerId,
     customerName,
     customerEmail,
     customerPhone,
@@ -52,7 +71,7 @@ export function parseFailedInvoice(invoice: Stripe.Invoice): FailedPaymentPayloa
     currency,
     hostedInvoiceUrl,
     attemptCount: invoice.attempt_count || 1,
-    failureReason: (invoice as any).last_finalization_error?.message || "Card declined / Soft decline",
+    failureReason: (invoice as any).last_finalization_error?.message || "card_declined (soft_decline)",
     planName,
   };
 }

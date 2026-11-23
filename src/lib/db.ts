@@ -1,4 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import path from "path";
+import fs from "fs";
 
 export type RecoveryStatus = "PENDING" | "RECOVERED" | "CHURNED" | "PHONE_MISSING";
 export type MessageChannel = "whatsapp" | "email" | "sms";
@@ -70,9 +72,15 @@ export interface DashboardKPIs {
 }
 
 // -------------------------------------------------------------
-// Initial Mock / Seed Data for Demo & Sandbox Testing
+// Persistent Disk Storage (dunnify_db.json)
 // -------------------------------------------------------------
-const seedMerchant: Merchant = {
+interface LocalDatabaseFile {
+  merchants: Record<string, Merchant>;
+  recovery_events: Record<string, RecoveryEvent>;
+  dunning_messages: Record<string, DunningMessage>;
+}
+
+const defaultMerchant: Merchant = {
   id: "00000000-0000-0000-0000-000000000001",
   name: "Marcus Vance",
   email: "marcus@vancegrowth.io",
@@ -85,217 +93,33 @@ const seedMerchant: Merchant = {
   updated_at: new Date().toISOString(),
 };
 
-const initialEvents: RecoveryEvent[] = [
-  {
-    id: "rec_101",
-    merchant_id: seedMerchant.id,
-    stripe_invoice_id: "in_1Oq8j22eZvKYlo2CLpQx99a1",
-    stripe_customer_id: "cus_P29x811aQ",
-    customer_name: "Elena Rostova",
-    customer_email: "elena@rostovadesign.com",
-    customer_phone: "+1 (555) 392-8192",
-    amount: 450.0,
-    currency: "USD",
-    status: "RECOVERED",
-    failure_reason: "card_declined (insufficient_funds)",
-    attempt_count: 1,
-    hosted_invoice_url: "https://pay.stripe.com/invoice/mock_elena",
-    pay_token: "tok_elena_450",
-    current_stage: 1,
-    plan_name: "Design Retainer Monthly",
-    recovered_at: new Date(Date.now() - 3600000).toISOString(),
-    created_at: new Date(Date.now() - 4200000).toISOString(),
-    updated_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: "rec_102",
-    merchant_id: seedMerchant.id,
-    stripe_invoice_id: "in_1Oq9k33fZvKYlo2CMmRx88b2",
-    stripe_customer_id: "cus_Q38y922bR",
-    customer_name: "Devin Thorne",
-    customer_email: "devin@thorneventures.co",
-    customer_phone: "+1 (555) 781-9923",
-    amount: 199.0,
-    currency: "USD",
-    status: "RECOVERED",
-    failure_reason: "expired_card",
-    attempt_count: 1,
-    hosted_invoice_url: "https://pay.stripe.com/invoice/mock_devin",
-    pay_token: "tok_devin_199",
-    current_stage: 1,
-    plan_name: "SaaS Pro Monthly",
-    recovered_at: new Date(Date.now() - 10800000).toISOString(),
-    created_at: new Date(Date.now() - 11400000).toISOString(),
-    updated_at: new Date(Date.now() - 10800000).toISOString(),
-  },
-  {
-    id: "rec_103",
-    merchant_id: seedMerchant.id,
-    stripe_invoice_id: "in_1OqAm44gZvKYlo2CNnSx77c3",
-    stripe_customer_id: "cus_R47z033cS",
-    customer_name: "Aria Montgomery",
-    customer_email: "aria@prismanalytics.tech",
-    customer_phone: "+1 (555) 912-0044",
-    amount: 320.0,
-    currency: "USD",
-    status: "PENDING",
-    failure_reason: "do_not_honor",
-    attempt_count: 2,
-    hosted_invoice_url: "https://pay.stripe.com/invoice/mock_aria",
-    pay_token: "tok_aria_320",
-    current_stage: 2,
-    plan_name: "Analytics Cluster Pro",
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-    updated_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: "rec_104",
-    merchant_id: seedMerchant.id,
-    stripe_invoice_id: "in_1OqBn55hZvKYlo2COoTx66d4",
-    stripe_customer_id: "cus_S56a144dT",
-    customer_name: "Liam O'Connor",
-    customer_email: "liam@celticcloud.io",
-    customer_phone: undefined,
-    amount: 149.0,
-    currency: "USD",
-    status: "PHONE_MISSING",
-    failure_reason: "card_velocity_exceeded",
-    attempt_count: 1,
-    hosted_invoice_url: "https://pay.stripe.com/invoice/mock_liam",
-    pay_token: "tok_liam_149",
-    current_stage: 1,
-    plan_name: "Starter Cloud Node",
-    created_at: new Date(Date.now() - 43200000).toISOString(),
-    updated_at: new Date(Date.now() - 43200000).toISOString(),
-  },
-  {
-    id: "rec_105",
-    merchant_id: seedMerchant.id,
-    stripe_invoice_id: "in_1OqCo66iZvKYlo2CPpUx55e5",
-    stripe_customer_id: "cus_T65b255eU",
-    customer_name: "Maya Lin",
-    customer_email: "maya@linstudios.co",
-    customer_phone: "+1 (555) 440-2381",
-    amount: 890.0,
-    currency: "USD",
-    status: "RECOVERED",
-    failure_reason: "card_declined (soft_decline)",
-    attempt_count: 1,
-    hosted_invoice_url: "https://pay.stripe.com/invoice/mock_maya",
-    pay_token: "tok_maya_890",
-    current_stage: 1,
-    plan_name: "Enterprise Studio Plan",
-    recovered_at: new Date(Date.now() - 86400000).toISOString(),
-    created_at: new Date(Date.now() - 90000000).toISOString(),
-    updated_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-];
+const DB_FILE_PATH = path.resolve(process.cwd(), "dunnify_db.json");
 
-const initialMessages: DunningMessage[] = [
-  {
-    id: "msg_201",
-    recovery_event_id: "rec_101",
-    stage: 1,
-    channel: "whatsapp",
-    recipient: "+1 (555) 392-8192",
-    status: "delivered",
-    message_id: "wamid.HBgLMTU1NTM5MjgxOTIVAgARGBI0MTU3MEIz",
-    scheduled_for: new Date(Date.now() - 4200000).toISOString(),
-    sent_at: new Date(Date.now() - 4180000).toISOString(),
-    body: "Hi Elena Rostova, your recent payment of $450.00 for your subscription couldn't be processed. Tap below to securely update your card in 10 seconds.",
-    action_url: "https://dunnify.com/pay/tok_elena_450",
-    created_at: new Date(Date.now() - 4200000).toISOString(),
-  },
-  {
-    id: "msg_202",
-    recovery_event_id: "rec_102",
-    stage: 1,
-    channel: "whatsapp",
-    recipient: "+1 (555) 781-9923",
-    status: "delivered",
-    message_id: "wamid.HBgLMTU1NTc4MTk5MjMVAgARGBIzNTkxMzkz",
-    scheduled_for: new Date(Date.now() - 11400000).toISOString(),
-    sent_at: new Date(Date.now() - 11390000).toISOString(),
-    body: "Hi Devin Thorne, your recent payment of $199.00 for your subscription couldn't be processed. Tap below to securely update your card in 10 seconds.",
-    action_url: "https://dunnify.com/pay/tok_devin_199",
-    created_at: new Date(Date.now() - 11400000).toISOString(),
-  },
-  {
-    id: "msg_203",
-    recovery_event_id: "rec_103",
-    stage: 1,
-    channel: "whatsapp",
-    recipient: "+1 (555) 912-0044",
-    status: "delivered",
-    message_id: "wamid.HBgLMTU1NTkxMjAwNDQVAgARGBI5MjI3MTg0",
-    scheduled_for: new Date(Date.now() - 172800000).toISOString(),
-    sent_at: new Date(Date.now() - 172790000).toISOString(),
-    body: "Hi Aria Montgomery, your recent payment of $320.00 for your subscription couldn't be processed.",
-    action_url: "https://dunnify.com/pay/tok_aria_320",
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-  },
-  {
-    id: "msg_204",
-    recovery_event_id: "rec_103",
-    stage: 2,
-    channel: "whatsapp",
-    recipient: "+1 (555) 912-0044",
-    status: "delivered",
-    message_id: "wamid.HBgLMTU1NTkxMjAwNDQVAgARGBI0MTU3ODgy",
-    scheduled_for: new Date(Date.now() - 86400000).toISOString(),
-    sent_at: new Date(Date.now() - 86380000).toISOString(),
-    body: "Quick reminder Aria: We're holding your Analytics Cluster Pro subscription open. Update your payment in 1-click.",
-    action_url: "https://dunnify.com/pay/tok_aria_320",
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: "msg_205",
-    recovery_event_id: "rec_103",
-    stage: 3,
-    channel: "whatsapp",
-    recipient: "+1 (555) 912-0044",
-    status: "scheduled",
-    scheduled_for: new Date(Date.now() + 86400000).toISOString(),
-    body: "Final Notice: Your subscription will pause in 24 hours. Keep access active with 1-click Apple Pay.",
-    action_url: "https://dunnify.com/pay/tok_aria_320",
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: "msg_206",
-    recovery_event_id: "rec_104",
-    stage: 1,
-    channel: "email",
-    recipient: "liam@celticcloud.io",
-    status: "delivered",
-    message_id: "email_liam_emergency_01",
-    scheduled_for: new Date(Date.now() - 43200000).toISOString(),
-    sent_at: new Date(Date.now() - 43190000).toISOString(),
-    body: "[Emergency Fallback Email] Payment failed for Starter Cloud Node ($149.00). Update your payment method.",
-    action_url: "https://dunnify.com/pay/tok_liam_149",
-    created_at: new Date(Date.now() - 43200000).toISOString(),
-  },
-];
-
-// -------------------------------------------------------------
-// In-Memory Repository (Works standalone & in zero-config dev)
-// -------------------------------------------------------------
-class InMemoryStore {
-  merchants: Map<string, Merchant> = new Map();
-  recoveryEvents: Map<string, RecoveryEvent> = new Map();
-  dunningMessages: Map<string, DunningMessage> = new Map();
-
-  constructor() {
-    this.merchants.set(seedMerchant.id, { ...seedMerchant });
-    initialEvents.forEach((e) => this.recoveryEvents.set(e.id, { ...e }));
-    initialMessages.forEach((m) => this.dunningMessages.set(m.id, { ...m }));
+function readDiskDb(): LocalDatabaseFile {
+  try {
+    if (fs.existsSync(DB_FILE_PATH)) {
+      const content = fs.readFileSync(DB_FILE_PATH, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.warn("[Dunnify DB] Error reading disk DB, using fresh store:", err);
   }
+
+  const initialDb: LocalDatabaseFile = {
+    merchants: { [defaultMerchant.id]: defaultMerchant },
+    recovery_events: {},
+    dunning_messages: {},
+  };
+  writeDiskDb(initialDb);
+  return initialDb;
 }
 
-// Global persistent instance across hot reloads in dev
-const globalForStore = globalThis as unknown as { dunnifyStore?: InMemoryStore };
-export const memoryStore = globalForStore.dunnifyStore || new InMemoryStore();
-if (process.env.NODE_ENV !== "production") {
-  globalForStore.dunnifyStore = memoryStore;
+function writeDiskDb(data: LocalDatabaseFile): void {
+  try {
+    fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[Dunnify DB] Error persisting disk DB:", err);
+  }
 }
 
 // Check if live Supabase is configured
@@ -308,11 +132,11 @@ export const supabase: SupabaseClient | null =
   supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // -------------------------------------------------------------
-// Database Access Layer (Unified API for Supabase / Fallback)
+// Database Access Layer (Unified API for Supabase / PostgreSQL / Disk DB)
 // -------------------------------------------------------------
 export const db = {
   // Merchant operations
-  async getMerchant(id: string = seedMerchant.id): Promise<Merchant> {
+  async getMerchant(id: string = defaultMerchant.id): Promise<Merchant> {
     if (supabase) {
       const { data, error } = await supabase
         .from("merchants")
@@ -321,19 +145,27 @@ export const db = {
         .single();
       if (!error && data) return data as Merchant;
     }
-    return memoryStore.merchants.get(id) || seedMerchant;
+
+    const disk = readDiskDb();
+    return disk.merchants[id] || defaultMerchant;
   },
 
   async updateMerchantSettings(id: string, updates: Partial<Merchant>): Promise<Merchant> {
+    const existing = await this.getMerchant(id);
     const updated = {
-      ...(await this.getMerchant(id)),
+      ...existing,
       ...updates,
       updated_at: new Date().toISOString(),
     };
+
     if (supabase) {
       await supabase.from("merchants").update(updates).eq("id", id);
     }
-    memoryStore.merchants.set(id, updated);
+
+    const disk = readDiskDb();
+    disk.merchants[id] = updated;
+    writeDiskDb(disk);
+
     return updated;
   },
 
@@ -357,16 +189,19 @@ export const db = {
       if (!error && data) return data as RecoveryEvent[];
     }
 
-    let items = Array.from(memoryStore.recoveryEvents.values()).sort(
+    const disk = readDiskDb();
+    let events = Object.values(disk.recovery_events).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
+
     if (filter?.status) {
-      items = items.filter((i) => i.status === filter.status);
+      events = events.filter((e) => e.status === filter.status);
     }
     if (filter?.limit) {
-      items = items.slice(0, filter.limit);
+      events = events.slice(0, filter.limit);
     }
-    return items;
+
+    return events;
   },
 
   async getRecoveryEventById(id: string): Promise<RecoveryEvent | null> {
@@ -378,7 +213,9 @@ export const db = {
         .single();
       if (!error && data) return data as RecoveryEvent;
     }
-    return memoryStore.recoveryEvents.get(id) || null;
+
+    const disk = readDiskDb();
+    return disk.recovery_events[id] || null;
   },
 
   async getRecoveryEventByInvoiceId(invoiceId: string): Promise<RecoveryEvent | null> {
@@ -390,9 +227,12 @@ export const db = {
         .single();
       if (!error && data) return data as RecoveryEvent;
     }
-    for (const ev of memoryStore.recoveryEvents.values()) {
+
+    const disk = readDiskDb();
+    for (const ev of Object.values(disk.recovery_events)) {
       if (ev.stripe_invoice_id === invoiceId) return ev;
     }
+
     return null;
   },
 
@@ -405,9 +245,12 @@ export const db = {
         .single();
       if (!error && data) return data as RecoveryEvent;
     }
-    for (const ev of memoryStore.recoveryEvents.values()) {
+
+    const disk = readDiskDb();
+    for (const ev of Object.values(disk.recovery_events)) {
       if (ev.pay_token === token) return ev;
     }
+
     return null;
   },
 
@@ -424,15 +267,23 @@ export const db = {
     };
 
     if (supabase) {
-      const { data: inserted, error } = await supabase
-        .from("recovery_events")
-        .insert(newEvent)
-        .select()
-        .single();
-      if (!error && inserted) return inserted as RecoveryEvent;
+      try {
+        const { data: inserted, error } = await supabase
+          .from("recovery_events")
+          .insert(newEvent)
+          .select()
+          .single();
+        if (!error && inserted) return inserted as RecoveryEvent;
+      } catch (e) {
+        console.warn("[Dunnify DB] Supabase insert fallback:", e);
+      }
     }
 
-    memoryStore.recoveryEvents.set(id, newEvent);
+    // Persist to local disk DB
+    const disk = readDiskDb();
+    disk.recovery_events[id] = newEvent;
+    writeDiskDb(disk);
+
     return newEvent;
   },
 
@@ -450,10 +301,17 @@ export const db = {
     };
 
     if (supabase) {
-      await supabase.from("recovery_events").update(updates).eq("id", id);
+      try {
+        await supabase.from("recovery_events").update(updates).eq("id", id);
+      } catch (e) {
+        console.warn("Supabase update error:", e);
+      }
     }
 
-    memoryStore.recoveryEvents.set(id, updated);
+    const disk = readDiskDb();
+    disk.recovery_events[id] = updated;
+    writeDiskDb(disk);
+
     return updated;
   },
 
@@ -470,12 +328,14 @@ export const db = {
       cancelledCount = data ? data.length : 0;
     }
 
-    for (const msg of memoryStore.dunningMessages.values()) {
+    const disk = readDiskDb();
+    for (const msg of Object.values(disk.dunning_messages)) {
       if (msg.recovery_event_id === eventId && msg.status === "scheduled") {
         msg.status = "cancelled";
         cancelledCount++;
       }
     }
+    writeDiskDb(disk);
 
     return cancelledCount;
   },
@@ -493,15 +353,22 @@ export const db = {
     };
 
     if (supabase) {
-      const { data: inserted, error } = await supabase
-        .from("dunning_messages")
-        .insert(newMsg)
-        .select()
-        .single();
-      if (!error && inserted) return inserted as DunningMessage;
+      try {
+        const { data: inserted, error } = await supabase
+          .from("dunning_messages")
+          .insert(newMsg)
+          .select()
+          .single();
+        if (!error && inserted) return inserted as DunningMessage;
+      } catch (e) {
+        // fallback
+      }
     }
 
-    memoryStore.dunningMessages.set(id, newMsg);
+    const disk = readDiskDb();
+    disk.dunning_messages[id] = newMsg;
+    writeDiskDb(disk);
+
     return newMsg;
   },
 
@@ -515,7 +382,8 @@ export const db = {
       if (!error && data) return data as DunningMessage[];
     }
 
-    return Array.from(memoryStore.dunningMessages.values())
+    const disk = readDiskDb();
+    return Object.values(disk.dunning_messages)
       .filter((m) => m.recovery_event_id === eventId)
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   },
@@ -528,7 +396,9 @@ export const db = {
         .order("created_at", { ascending: false });
       if (data) return data as DunningMessage[];
     }
-    return Array.from(memoryStore.dunningMessages.values()).sort(
+
+    const disk = readDiskDb();
+    return Object.values(disk.dunning_messages).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   },
@@ -536,7 +406,7 @@ export const db = {
   // Calculate live Merchant KPIs
   async getDashboardKPIs(): Promise<DashboardKPIs> {
     const events = await this.listRecoveryEvents();
-    
+
     let totalRecoveredCash = 0;
     let totalFailedVolume = 0;
     let recoveredCount = 0;
@@ -552,10 +422,7 @@ export const db = {
       }
     }
 
-    const totalResolved = recoveredCount + (events.length - recoveredCount - pendingCount);
     const recoveryRate = events.length > 0 ? (recoveredCount / events.length) * 100 : 0;
-    
-    // Retained ARR is annualized recovered monthly cash: totalRecoveredCash * 12
     const retainedARR = totalRecoveredCash * 12;
 
     return {

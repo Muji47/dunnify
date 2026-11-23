@@ -1,0 +1,138 @@
+{
+  "merchants": {
+    "00000000-0000-0000-0000-000000000001": {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "Marcus Vance",
+      "email": "marcus@vancegrowth.io",
+      "company_name": "Vance Growth Media",
+      "plan_tier": "growth",
+      "quiet_hours_enabled": true,
+      "quiet_hours_start": "22:00",
+      "quiet_hours_end": "08:00",
+      "created_at": "2026-10-24T13:17:33.160Z",
+      "updated_at": "2026-11-23T13:17:33.160Z"
+    }
+  },
+  "recovery_events": {
+    "rec_1795439865294_l0ms5": {
+      "merchant_id": "00000000-0000-0000-0000-000000000001",
+      "stripe_invoice_id": "in_stripe_cli_48f5vhg",
+      "stripe_customer_id": "cus_cli_gf58kai",
+      "customer_name": "Stripe CLI Test Customer",
+      "customer_email": "alex.cli@dunnify-demo.com",
+      "customer_phone": "+1 (555) 789-0123",
+      "amount": 249,
+      "currency": "USD",
+      "status": "RECOVERED",
+      "failure_reason": "The card was declined (soft decline / insufficient funds)",
+      "attempt_count": 1,
+      "hosted_invoice_url": "https://pay.stripe.com/invoice/in_stripe_cli_48f5vhg",
+      "pay_token": "tok_5h3oyx3u_mwtajefi",
+      "current_stage": 1,
+      "plan_name": "Agency Tier Subscription Monthly",
+      "id": "rec_1795439865294_l0ms5",
+      "created_at": "2026-11-23T13:17:45.294Z",
+      "updated_at": "2026-11-23T13:17:45.322Z",
+      "recovered_at": "2026-11-23T13:17:45.322Z"
+    },
+    "rec_1795439903635_mz1vh": {
+      "merchant_id": "00000000-0000-0000-0000-000000000001",
+      "stripe_invoice_id": "in_stripe_cli_2lh6zjq",
+      "stripe_customer_id": "cus_cli_p66vlgo",
+      "customer_name": "Stripe CLI Test Customer",
+      "customer_email": "alex.cli@dunnify-demo.com",
+      "customer_phone": "+1 (555) 789-0123",
+      "amount": 249,
+      "currency": "USD",
+      "status": "RECOVERED",
+      "failure_reason": "The card was declined (soft decline / insufficient funds)",
+      "attempt_count": 1,
+      "hosted_invoice_url": "https://pay.stripe.com/invoice/in_stripe_cli_2lh6zjq",
+      "pay_token": "tok_r2gfeq93_mwtak80j",
+      "current_stage": 1,
+      "plan_name": "Agency Tier Subscription Monthly",
+      "id": "rec_1795439903635_mz1vh",
+      "created_at": "2026-11-23T13:18:23.635Z",
+      "updated_at": "2026-11-23T13:18:23.698Z",
+      "recovered_at": "2026-11-23T13:18:23.698Z"
+    }
+  },
+  "dunning_messages": {
+    "msg_1795439865314_tv4jf": {
+      "recovery_event_id": "rec_1795439865294_l0ms5",
+      "stage": 1,
+      "channel": "whatsapp",
+      "recipient": "+1 (555) 789-0123",
+      "status": "delivered",
+      "message_id": "wamid.sim_1795439865314_stage1",
+      "scheduled_for": "2026-11-23T13:17:45.294Z",
+      "sent_at": "2026-11-23T13:17:45.314Z",
+      "body": "Hi Stripe CLI Test Customer, your recent payment of $249.00 for Agency Tier Subscription Monthly couldn't be processed due to a temporary bank decline.\n\nTap below to securely update your card in 10 seconds with Apple Pay or credit card to keep your subscription uninterrupted:\nhttps://dunnify.com/pay/tok_5h3oyx3u_mwtajefi",
+      "action_url": "https://dunnify.com/pay/tok_5h3oyx3u_mwtajefi",
+      "id": "msg_1795439865314_tv4jf",
+      "created_at": "2026-11-23T13:17:45.314Z"
+    },
+    "msg_1795439865315_5gg88": {
+      "recovery_event_id": "rec_1795439865294_l0ms5",
+      "stage": 2,
+      "channel": "whatsapp",
+      "recipient": "+1 (555) 789-0123",
+      "status": "cancelled",
+      "scheduled_for": "2026-11-25T13:17:45.294Z",
+      "body": "Hi Stripe CLI Test Customer, quick reminder: We're holding your Agency Tier Subscription Monthly subscription active. Please update payment.",
+      "action_url": "https://dunnify.com/pay/tok_5h3oyx3u_mwtajefi",
+      "id": "msg_1795439865315_5gg88",
+      "created_at": "2026-11-23T13:17:45.315Z"
+    },
+    "msg_1795439865315_9onhd": {
+      "recovery_event_id": "rec_1795439865294_l0ms5",
+      "stage": 3,
+      "channel": "whatsapp",
+      "recipient": "+1 (555) 789-0123",
+      "status": "cancelled",
+      "scheduled_for": "2026-11-27T13:17:45.294Z",
+      "body": "FINAL NOTICE: Hi Stripe CLI Test Customer, your Agency Tier Subscription Monthly subscription will cancel in 24 hours. Tap to settle.",
+      "action_url": "https://dunnify.com/pay/tok_5h3oyx3u_mwtajefi",
+      "id": "msg_1795439865315_9onhd",
+      "created_at": "2026-11-23T13:17:45.315Z"
+    },
+    "msg_1795439903657_s5z3a": {
+      "recovery_event_id": "rec_1795439903635_mz1vh",
+      "stage": 1,
+      "channel": "whatsapp",
+      "recipient": "+1 (555) 789-0123",
+      "status": "delivered",
+      "message_id": "wamid.sim_1795439903656_stage1",
+      "scheduled_for": "2026-11-23T13:18:23.635Z",
+      "sent_at": "2026-11-23T13:18:23.656Z",
+      "body": "Hi Stripe CLI Test Customer, your recent payment of $249.00 for Agency Tier Subscription Monthly couldn't be processed due to a temporary bank decline.\n\nTap below to securely update your card in 10 seconds with Apple Pay or credit card to keep your subscription uninterrupted:\nhttps://dunnify.com/pay/tok_r2gfeq93_mwtak80j",
+      "action_url": "https://dunnify.com/pay/tok_r2gfeq93_mwtak80j",
+      "id": "msg_1795439903657_s5z3a",
+      "created_at": "2026-11-23T13:18:23.657Z"
+    },
+    "msg_1795439903657_6c1q7": {
+      "recovery_event_id": "rec_1795439903635_mz1vh",
+      "stage": 2,
+      "channel": "whatsapp",
+      "recipient": "+1 (555) 789-0123",
+      "status": "cancelled",
+      "scheduled_for": "2026-11-25T13:18:23.635Z",
+      "body": "Hi Stripe CLI Test Customer, quick reminder: We're holding your Agency Tier Subscription Monthly subscription active. Please update payment.",
+      "action_url": "https://dunnify.com/pay/tok_r2gfeq93_mwtak80j",
+      "id": "msg_1795439903657_6c1q7",
+      "created_at": "2026-11-23T13:18:23.657Z"
+    },
+    "msg_1795439903657_mnn1a": {
+      "recovery_event_id": "rec_1795439903635_mz1vh",
+      "stage": 3,
+      "channel": "whatsapp",
+      "recipient": "+1 (555) 789-0123",
+      "status": "cancelled",
+      "scheduled_for": "2026-11-27T13:18:23.635Z",
+      "body": "FINAL NOTICE: Hi Stripe CLI Test Customer, your Agency Tier Subscription Monthly subscription will cancel in 24 hours. Tap to settle.",
+      "action_url": "https://dunnify.com/pay/tok_r2gfeq93_mwtak80j",
+      "id": "msg_1795439903657_mnn1a",
+      "created_at": "2026-11-23T13:18:23.657Z"
+    }
+  }
+}
