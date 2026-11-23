@@ -375,8 +375,12 @@ export default function Home() {
 
                 {/* WhatsApp Header */}
                 <div className="bg-[#1f2c34] text-white p-3 rounded-t-2xl flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center font-black text-black text-xs">
-                    D
+                  <div className="w-8 h-8 rounded-full bg-[#080F1C] border border-emerald-500/30 flex items-center justify-center overflow-hidden p-1 shadow">
+                    <img
+                      src="/brand/dunnify-icon.png"
+                      alt="Dunnify Avatar"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <div>
                     <div className="text-xs font-bold flex items-center gap-1">
