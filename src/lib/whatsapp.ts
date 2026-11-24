@@ -178,9 +178,44 @@ export async function sendWhatsAppDunningMessage(
 
       const data = await response.json();
       if (!response.ok) {
+        // Fallback: If custom template is still in review with Meta, attempt direct text message
+        const textPayload = {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: cleanPhone,
+          type: "text",
+          text: { body: messageBody },
+        };
+
+        const textResponse = await fetch(
+          `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(textPayload),
+          }
+        );
+
+        const textData = await textResponse.json();
+        if (textResponse.ok) {
+          console.log(`[Meta Cloud API] Message delivered via direct text fallback (template in review).`);
+          return {
+            success: true,
+            messageId: textData.messages?.[0]?.id,
+            mode: "production",
+            recipient: targetPhone,
+            body: messageBody,
+            actionUrl: options.actionUrl,
+            stage: options.stage,
+          };
+        }
+
         return {
           success: false,
-          error: data.error?.message || "WhatsApp API error",
+          error: data.error?.message || textData.error?.message || "WhatsApp API error",
           mode: "production",
           recipient: targetPhone,
           body: messageBody,
