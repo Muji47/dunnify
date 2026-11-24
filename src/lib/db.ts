@@ -2,7 +2,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import path from "path";
 import fs from "fs";
 
-export type RecoveryStatus = "PENDING" | "RECOVERED" | "CHURNED" | "PHONE_MISSING";
+export type RecoveryStatus = "PENDING" | "RECOVERED" | "CHURNED" | "PHONE_MISSING" | "OPTED_OUT";
 export type MessageChannel = "whatsapp" | "email" | "sms";
 export type MessageStatus = "scheduled" | "sent" | "delivered" | "read" | "failed" | "cancelled";
 export type DunningStage = 1 | 2 | 3;
@@ -14,6 +14,7 @@ export interface Merchant {
   company_name?: string;
   stripe_account_id?: string;
   stripe_webhook_secret?: string;
+  stripe_restricted_key?: string;
   meta_whatsapp_phone_number_id?: string;
   meta_whatsapp_token?: string;
   plan_tier: "starter" | "growth" | "scale";
@@ -32,6 +33,7 @@ export interface RecoveryEvent {
   customer_name: string;
   customer_email: string;
   customer_phone?: string;
+  whatsapp_opted_out?: boolean;
   amount: number;
   currency: string;
   status: RecoveryStatus;
@@ -369,7 +371,8 @@ export const db = {
 
     if (supabase) {
       try {
-        await supabase.from("recovery_events").update(updates).eq("id", id);
+        const { error } = await supabase.from("recovery_events").update(updates).eq("id", id);
+        if (error) console.error("[Dunnify DB] updateRecoveryEvent error:", error);
       } catch (e) {
         console.warn("Supabase update error:", e);
       }
@@ -405,6 +408,52 @@ export const db = {
     writeDiskDb(disk);
 
     return cancelledCount;
+  },
+
+  // WhatsApp Compliance: Opts out customer by phone (e.g. STOP reply)
+  async optOutCustomerByPhone(phone: string): Promise<{
+    optedOutCount: number;
+    cancelledMessagesCount: number;
+    events: RecoveryEvent[];
+  }> {
+    const cleanPhone = phone.replace(/[^0-9+]/g, "");
+    const allEvents = await this.listRecoveryEvents();
+    const matchedEvents = allEvents.filter((ev) => {
+      if (!ev.customer_phone) return false;
+      const evPhone = ev.customer_phone.replace(/[^0-9+]/g, "");
+      return evPhone === cleanPhone || evPhone.endsWith(cleanPhone) || cleanPhone.endsWith(evPhone);
+    });
+
+    let cancelledMessagesCount = 0;
+    const updatedEvents: RecoveryEvent[] = [];
+
+    for (const ev of matchedEvents) {
+      const updated = await this.updateRecoveryEvent(ev.id, {
+        whatsapp_opted_out: true,
+        status: ev.status === "PENDING" ? "OPTED_OUT" : ev.status,
+      });
+      if (updated) {
+        updatedEvents.push(updated);
+      }
+      const cancelled = await this.cancelPendingDunningMessages(ev.id);
+      cancelledMessagesCount += cancelled;
+    }
+
+    return {
+      optedOutCount: matchedEvents.length,
+      cancelledMessagesCount,
+      events: updatedEvents,
+    };
+  },
+
+  async isCustomerOptedOut(phone: string): Promise<boolean> {
+    const cleanPhone = phone.replace(/[^0-9+]/g, "");
+    const allEvents = await this.listRecoveryEvents();
+    return allEvents.some((ev) => {
+      if (!ev.customer_phone || !ev.whatsapp_opted_out) return false;
+      const evPhone = ev.customer_phone.replace(/[^0-9+]/g, "");
+      return evPhone === cleanPhone || evPhone.endsWith(cleanPhone) || cleanPhone.endsWith(evPhone);
+    });
   },
 
   // Dunning message operations

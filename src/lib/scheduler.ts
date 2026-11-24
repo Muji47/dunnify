@@ -56,7 +56,8 @@ export async function initiateDunningSequence(
   const payToken = `tok_${Math.random().toString(36).substring(2, 10)}_${Date.now().toString(36)}`;
   const actionUrl = `https://dunnify.com/pay/${payToken}`;
 
-  const hasPhone = Boolean(params.customerPhone && params.customerPhone.trim().length > 5);
+  const isOptedOut = params.customerPhone ? await db.isCustomerOptedOut(params.customerPhone) : false;
+  const hasPhone = Boolean(params.customerPhone && params.customerPhone.trim().length > 5 && !isOptedOut);
 
   // 2. Create the Recovery Event
   const recoveryEvent = await db.createRecoveryEvent({
@@ -66,9 +67,10 @@ export async function initiateDunningSequence(
     customer_name: params.customerName,
     customer_email: params.customerEmail,
     customer_phone: params.customerPhone,
+    whatsapp_opted_out: isOptedOut,
     amount: params.amount,
     currency: params.currency.toUpperCase(),
-    status: hasPhone ? "PENDING" : "PHONE_MISSING",
+    status: isOptedOut ? "OPTED_OUT" : (hasPhone ? "PENDING" : "PHONE_MISSING"),
     failure_reason: params.failureReason || "Card declined / Soft decline",
     attempt_count: 1,
     hosted_invoice_url: params.hostedInvoiceUrl,
@@ -77,10 +79,10 @@ export async function initiateDunningSequence(
     plan_name: params.planName || "Monthly Subscription",
   });
 
-  // Edge Case 1: Missing Customer Phone Number -> Fallback to emergency email dunning
+  // Edge Case 1: Missing Customer Phone Number or Opted-out -> Fallback to emergency email dunning
   if (!hasPhone) {
     console.warn(
-      `[Dunnify Guard] Phone missing for ${params.customerName}. Executing emergency email dunning fallback.`
+      `[Dunnify Guard] ${isOptedOut ? "Customer opted out of WhatsApp" : "Phone missing"} for ${params.customerName}. Executing emergency email dunning fallback.`
     );
 
     const emailResult = await sendEmergencyDunningEmail({
@@ -275,8 +277,8 @@ export async function processDueScheduledMessages(): Promise<{
 
   for (const msg of dueMessages) {
     const event = await db.getRecoveryEventById(msg.recovery_event_id);
-    if (!event || event.status === "RECOVERED") {
-      // Circuit breaker safety: if already recovered, cancel
+    if (!event || event.status === "RECOVERED" || event.whatsapp_opted_out) {
+      // Circuit breaker & opt-out safety: if already recovered or opted out, cancel
       await db.updateDunningMessage(msg.id, { status: "cancelled" });
       continue;
     }

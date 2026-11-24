@@ -9,6 +9,7 @@ export interface SendWhatsAppOptions {
   actionUrl: string;
   stage: DunningStage;
   invoiceId: string;
+  customBody?: string;
 }
 
 export interface WhatsAppMessageResult {
@@ -77,15 +78,15 @@ export function getDunningMessageCopy(
   switch (stage) {
     case 1:
       // Stage 1: Instant Nudge (Day 0 / <60s)
-      return `Hi ${customerName}, your recent payment of ${formattedAmount} for ${planName} couldn't be processed due to a temporary bank decline.\n\nTap below to securely update your card in 10 seconds with Apple Pay or credit card to keep your subscription uninterrupted:\n${actionUrl}`;
+      return `Hi ${customerName}, your recent payment of ${formattedAmount} for ${planName} couldn't be processed due to a temporary bank decline.\n\nTap below to securely update your card in 10 seconds with Apple Pay or credit card to keep your subscription uninterrupted:\n${actionUrl}\n\nReply STOP to unsubscribe.`;
 
     case 2:
       // Stage 2: Gentle Reminder (Day 2 / +48h)
-      return `Hi ${customerName}, quick reminder: We're holding your ${planName} subscription active for you. Please update your payment method to avoid any service disruption.\n\n1-Click Update: ${actionUrl}`;
+      return `Hi ${customerName}, quick reminder: We're holding your ${planName} subscription active for you. Please update your payment method to avoid any service disruption.\n\n1-Click Update: ${actionUrl}\n\nReply STOP to unsubscribe.`;
 
     case 3:
       // Stage 3: Final Urgent Notice (Day 4 / +96h)
-      return `FINAL NOTICE: Hi ${customerName}, your ${planName} subscription is scheduled for cancellation in 24 hours. Tap below to keep your active workspace and benefits:\n\nSettle in 1-Click: ${actionUrl}`;
+      return `FINAL NOTICE: Hi ${customerName}, your ${planName} subscription is scheduled for cancellation in 24 hours. Tap below to keep your active workspace and benefits:\n\nSettle in 1-Click: ${actionUrl}\n\nReply STOP to unsubscribe.`;
   }
 }
 
@@ -106,13 +107,15 @@ export async function sendWhatsAppDunningMessage(
   }).format(options.amount);
 
   const planName = options.planName || "Subscription";
-  const messageBody = getDunningMessageCopy(
-    options.stage,
-    options.customerName,
-    formattedAmount,
-    planName,
-    options.actionUrl
-  );
+  const messageBody =
+    options.customBody ||
+    getDunningMessageCopy(
+      options.stage,
+      options.customerName,
+      formattedAmount,
+      planName,
+      options.actionUrl
+    );
 
   // If live Meta Cloud API credentials are provided
   if (token && phoneNumberId) {

@@ -34,6 +34,8 @@ import {
   LogOut,
   User,
   FastForward,
+  Copy,
+  Check,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -81,6 +83,7 @@ export default function DashboardPage() {
     quiet_hours_start: "22:00",
     quiet_hours_end: "08:00",
     stripe_webhook_secret: "",
+    stripe_restricted_key: "",
     meta_whatsapp_phone_number_id: "",
     meta_whatsapp_token: "",
   });
@@ -88,6 +91,15 @@ export default function DashboardPage() {
   const [settingsSuccessMessage, setSettingsSuccessMessage] = useState("");
   const [timeMachineLoading, setTimeMachineLoading] = useState(false);
   const [timeMachineFeedback, setTimeMachineFeedback] = useState<string | null>(null);
+  const [testingStripe, setTestingStripe] = useState(false);
+  const [stripeTestResult, setStripeTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    mode?: string;
+    verifiedAt?: string;
+  } | null>(null);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -103,6 +115,7 @@ export default function DashboardPage() {
             quiet_hours_start: data.merchant.quiet_hours_start || "22:00",
             quiet_hours_end: data.merchant.quiet_hours_end || "08:00",
             stripe_webhook_secret: data.merchant.stripe_webhook_secret || "",
+            stripe_restricted_key: data.merchant.stripe_restricted_key || "",
             meta_whatsapp_phone_number_id: data.merchant.meta_whatsapp_phone_number_id || "",
             meta_whatsapp_token: data.merchant.meta_whatsapp_token || "",
           });
@@ -312,6 +325,34 @@ export default function DashboardPage() {
       console.error(err);
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleTestStripeConnection = async () => {
+    setTestingStripe(true);
+    setStripeTestResult(null);
+    try {
+      const res = await fetch("/api/dashboard/stripe/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stripeRestrictedKey: settingsForm.stripe_restricted_key,
+          stripeWebhookSecret: settingsForm.stripe_webhook_secret,
+          saveKey: true,
+        }),
+      });
+      const data = await res.json();
+      setStripeTestResult(data);
+      if (data.success) {
+        await fetchData();
+      }
+    } catch (err: any) {
+      setStripeTestResult({
+        success: false,
+        error: err.message || "Failed to reach test connection endpoint.",
+      });
+    } finally {
+      setTestingStripe(false);
     }
   };
 
@@ -1041,11 +1082,11 @@ export default function DashboardPage() {
       )}
 
       {/* ------------------------------------------------------------------ */}
-      {/* Settings Modal */}
+      {/* Settings Modal (60-Second Stripe Setup Wizard + Meta WhatsApp)     */}
       {/* ------------------------------------------------------------------ */}
       {isSettingsModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111C2E] border border-white/[0.1] rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl relative">
+          <div className="bg-[#111C2E] border border-white/[0.1] rounded-3xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl relative">
             <button
               onClick={() => setIsSettingsModalOpen(false)}
               className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl bg-white/[0.04]"
@@ -1053,96 +1094,212 @@ export default function DashboardPage() {
               <X className="w-4 h-4" />
             </button>
 
-            <h3 className="text-lg font-bold text-slate-50 mb-1 flex items-center gap-2">
+            <h3 className="text-xl font-bold text-slate-50 mb-1 flex items-center gap-2">
               <Settings className="w-5 h-5 text-emerald-400" />
               Settings & Integrations
             </h3>
             <p className="text-xs text-slate-400 mb-6">
-              Connect your Stripe webhook endpoint and Meta WhatsApp Cloud API credentials.
+              Connect your Stripe account via restricted read-only credentials (no OAuth review required) and Meta WhatsApp API.
             </p>
 
             {settingsSuccessMessage && (
               <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
                 {settingsSuccessMessage}
               </div>
             )}
 
-            <form onSubmit={handleSaveSettings} className="space-y-4 text-xs">
-              {/* Webhook URL Copy */}
-              <div className="bg-[#080F1C] border border-white/[0.08] rounded-xl p-3">
-                <div className="text-[11px] text-slate-400 font-semibold mb-1">
-                  Your Stripe Webhook Destination URL:
+            <form onSubmit={handleSaveSettings} className="space-y-6 text-xs">
+              {/* -------------------------------------------------------- */}
+              {/* 60-SECOND STRIPE SETUP WIZARD                            */}
+              {/* -------------------------------------------------------- */}
+              <div className="bg-[#080F1C] border border-emerald-500/20 rounded-2xl p-4.5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-bold text-slate-100 text-sm">60-Second Stripe Setup</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                    No OAuth Required
+                  </span>
                 </div>
-                <div className="font-mono text-[11px] text-emerald-400 select-all break-all">
-                  https://dunnify.com/api/webhooks/stripe
+
+                {/* Step 1: Webhook URL */}
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-300 font-semibold flex items-center justify-between">
+                    <span>1. Your Webhook Destination URL:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${typeof window !== "undefined" ? window.location.origin : "https://dunnify.vercel.app"}/api/webhooks/stripe?merchant_id=${merchant?.id || "default"}`;
+                        navigator.clipboard.writeText(url);
+                        setCopiedWebhook(true);
+                        setTimeout(() => setCopiedWebhook(false), 2000);
+                      }}
+                      className="text-emerald-400 hover:text-emerald-300 text-[10px] flex items-center gap-1 font-mono transition"
+                    >
+                      {copiedWebhook ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      {copiedWebhook ? "Copied!" : "Copy URL"}
+                    </button>
+                  </div>
+                  <div className="p-2.5 bg-[#111C2E] border border-white/[0.06] rounded-xl font-mono text-[11px] text-emerald-400 break-all select-all">
+                    {typeof window !== "undefined" ? window.location.origin : "https://dunnify.vercel.app"}/api/webhooks/stripe?merchant_id={merchant?.id || "default"}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    In Stripe Dashboard → <strong>Developers</strong> → <strong>Webhooks</strong>, add this URL and listen for: <code className="text-slate-300">invoice.payment_failed</code> & <code className="text-slate-300">invoice.payment_succeeded</code>.
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-500 mt-1">
-                  Listen for: <code>invoice.payment_failed</code>, <code>invoice.payment_succeeded</code>
+
+                {/* Step 2: Webhook Signing Secret */}
+                <div className="space-y-1">
+                  <label className="block text-slate-300 font-semibold text-[11px]">
+                    2. Stripe Webhook Signing Secret (whsec_...)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="whsec_..."
+                    value={settingsForm.stripe_webhook_secret}
+                    onChange={(e) =>
+                      setSettingsForm({ ...settingsForm, stripe_webhook_secret: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-[#111C2E] border border-white/[0.08] rounded-xl text-slate-100 font-mono text-xs focus:border-emerald-500/50 outline-none"
+                  />
+                </div>
+
+                {/* Step 3: Restricted API Key */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-slate-300 font-semibold text-[11px]">
+                      3. Stripe Restricted API Key (rk_live_... / rk_test_...)
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-medium">Read-Only Scoped</span>
+                  </div>
+                  <input
+                    type="password"
+                    placeholder="rk_live_... or rk_test_..."
+                    value={settingsForm.stripe_restricted_key}
+                    onChange={(e) =>
+                      setSettingsForm({ ...settingsForm, stripe_restricted_key: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-[#111C2E] border border-white/[0.08] rounded-xl text-slate-100 font-mono text-xs focus:border-emerald-500/50 outline-none"
+                  />
+                  <div className="text-[10px] text-slate-400 pt-0.5">
+                    Create in Stripe → <strong>API Keys</strong> → <strong>Restricted Keys</strong> with Read access for <strong className="text-slate-300">Invoices</strong> & <strong className="text-slate-300">Customers</strong>. Zero risk: never share master secret keys.
+                  </div>
+                </div>
+
+                {/* Step 4: Test Connection Button & Result */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleTestStripeConnection}
+                    disabled={testingStripe || !settingsForm.stripe_restricted_key}
+                    className="w-full py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-slate-200 font-semibold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Zap className={`w-3.5 h-3.5 text-amber-400 ${testingStripe ? "animate-spin" : ""}`} />
+                    {testingStripe ? "Testing Stripe Connection..." : "Test Stripe Connection ⚡"}
+                  </button>
+
+                  {stripeTestResult && (
+                    <div
+                      className={`mt-2.5 p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                        stripeTestResult.success
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                          : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+                      }`}
+                    >
+                      {stripeTestResult.success ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <div className="font-semibold">
+                          {stripeTestResult.success ? "Connection Verified!" : "Connection Test Failed"}
+                        </div>
+                        <div className="text-[11px] mt-0.5 text-slate-300">
+                          {stripeTestResult.message || stripeTestResult.error}
+                        </div>
+                        {stripeTestResult.verifiedAt && (
+                          <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                            Verified at: {new Date(stripeTestResult.verifiedAt).toLocaleTimeString()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Stripe Webhook Secret */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Stripe Webhook Signing Secret (whsec_...)
-                </label>
-                <input
-                  type="password"
-                  placeholder="whsec_..."
-                  value={settingsForm.stripe_webhook_secret}
-                  onChange={(e) =>
-                    setSettingsForm({ ...settingsForm, stripe_webhook_secret: e.target.value })
-                  }
-                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 font-mono"
-                />
+              {/* -------------------------------------------------------- */}
+              {/* META WHATSAPP CLOUD API                                 */}
+              {/* -------------------------------------------------------- */}
+              <div className="bg-[#080F1C] border border-white/[0.08] rounded-2xl p-4.5 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-100 text-sm">Meta WhatsApp Cloud API</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-medium">
+                    Webhook & Sending
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-slate-300 font-semibold text-[11px]">
+                    Meta Inbound Webhook Callback URL:
+                  </label>
+                  <div className="p-2 bg-[#111C2E] border border-white/[0.06] rounded-xl font-mono text-[10px] text-indigo-300 break-all select-all">
+                    {typeof window !== "undefined" ? window.location.origin : "https://dunnify.vercel.app"}/api/webhooks/whatsapp
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    Verify Token: <code className="text-slate-300 font-mono">dunnify_meta_verify_token_2026</code>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-slate-300 font-semibold text-[11px]">
+                    Meta WhatsApp Phone Number ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 100654321098765"
+                    value={settingsForm.meta_whatsapp_phone_number_id}
+                    onChange={(e) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        meta_whatsapp_phone_number_id: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-[#111C2E] border border-white/[0.08] rounded-xl text-slate-100 font-mono text-xs focus:border-indigo-500/50 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-slate-300 font-semibold text-[11px]">
+                    Meta System User Access Token
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="EAAG..."
+                    value={settingsForm.meta_whatsapp_token}
+                    onChange={(e) =>
+                      setSettingsForm({ ...settingsForm, meta_whatsapp_token: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-[#111C2E] border border-white/[0.08] rounded-xl text-slate-100 font-mono text-xs focus:border-indigo-500/50 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Leave empty to operate in Sandbox Simulation mode for zero-token testing.
+                  </p>
+                </div>
               </div>
 
-              {/* Meta WhatsApp Phone Number ID */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Meta WhatsApp Phone Number ID
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 109283921092"
-                  value={settingsForm.meta_whatsapp_phone_number_id}
-                  onChange={(e) =>
-                    setSettingsForm({
-                      ...settingsForm,
-                      meta_whatsapp_phone_number_id: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 font-mono"
-                />
-              </div>
-
-              {/* Meta WhatsApp System User Access Token */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Meta System User Access Token
-                </label>
-                <input
-                  type="password"
-                  placeholder="EAAG..."
-                  value={settingsForm.meta_whatsapp_token}
-                  onChange={(e) =>
-                    setSettingsForm({ ...settingsForm, meta_whatsapp_token: e.target.value })
-                  }
-                  className="w-full px-3 py-2 bg-[#080F1C] border border-white/[0.08] rounded-xl text-slate-100 font-mono"
-                />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Leave empty to operate in Sandbox Simulation mode for zero-token testing.
-                </p>
-              </div>
-
-              {/* Quiet Hours Compliance Settings */}
-              <div className="bg-[#080F1C] border border-white/[0.08] rounded-xl p-3.5 space-y-3">
+              {/* -------------------------------------------------------- */}
+              {/* QUIET HOURS & COMPLIANCE SETTINGS                       */}
+              {/* -------------------------------------------------------- */}
+              <div className="bg-[#080F1C] border border-white/[0.08] rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-semibold text-slate-200">Quiet Hours Compliance</div>
                     <div className="text-[10px] text-slate-400">
-                      Queue messages overnight to prevent disturbing subscribers.
+                      Queue messages overnight to prevent disturbing subscribers at night.
                     </div>
                   </div>
                   <input
@@ -1151,7 +1308,7 @@ export default function DashboardPage() {
                     onChange={(e) =>
                       setSettingsForm({ ...settingsForm, quiet_hours_enabled: e.target.checked })
                     }
-                    className="accent-emerald-500 rounded"
+                    className="accent-emerald-500 rounded cursor-pointer"
                   />
                 </div>
 
@@ -1165,7 +1322,7 @@ export default function DashboardPage() {
                         onChange={(e) =>
                           setSettingsForm({ ...settingsForm, quiet_hours_start: e.target.value })
                         }
-                        className="w-full px-2 py-1 bg-[#111C2E] border border-white/[0.08] rounded-lg text-slate-200 mt-1"
+                        className="w-full px-2 py-1.5 bg-[#111C2E] border border-white/[0.08] rounded-lg text-slate-200 mt-1 text-xs"
                       />
                     </div>
                     <div>
@@ -1176,7 +1333,7 @@ export default function DashboardPage() {
                         onChange={(e) =>
                           setSettingsForm({ ...settingsForm, quiet_hours_end: e.target.value })
                         }
-                        className="w-full px-2 py-1 bg-[#111C2E] border border-white/[0.08] rounded-lg text-slate-200 mt-1"
+                        className="w-full px-2 py-1.5 bg-[#111C2E] border border-white/[0.08] rounded-lg text-slate-200 mt-1 text-xs"
                       />
                     </div>
                   </div>
@@ -1187,7 +1344,7 @@ export default function DashboardPage() {
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+                  className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 text-xs"
                 >
                   {savingSettings ? "Saving Settings..." : "Save Configuration"}
                 </button>
