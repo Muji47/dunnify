@@ -6,6 +6,7 @@ import {
 } from "./whatsapp";
 import { sendEmergencyDunningEmail } from "./email";
 import { scheduleDunningMessageWithQStash } from "./qstash";
+import { notifySlackPaymentFailed, notifySlackPaymentRecovered } from "./slack";
 
 export interface ScheduleSequenceParams {
   merchantId?: string;
@@ -218,6 +219,20 @@ export async function initiateDunningSequence(
     dunningMessageId: msg3.id,
   });
 
+  // Fire real-time alert into Slack
+  notifySlackPaymentFailed({
+    amount: params.amount,
+    currency: params.currency,
+    customerName: params.customerName,
+    customerEmail: params.customerEmail,
+    planName: recoveryEvent.plan_name,
+    failureReason: recoveryEvent.failure_reason,
+    channelUsed: "whatsapp",
+    stage: 1,
+    payToken,
+    merchantId: merchant.id,
+  }).catch(() => {});
+
   return {
     recoveryEvent,
     stage1Dispatched: stage1Status === "delivered",
@@ -252,6 +267,19 @@ export async function triggerCircuitBreaker(stripeInvoiceId: string, recoveredAm
   console.log(
     `[Circuit Breaker Activated] Invoice ${stripeInvoiceId} RECOVERED! Cancelled ${cancelledCount} pending dunning message(s).`
   );
+
+  // Fire real-time celebration to merchant's Slack channel
+  notifySlackPaymentRecovered({
+    amount: recoveredAmount !== undefined ? recoveredAmount : event.amount,
+    currency: event.currency,
+    customerName: event.customer_name,
+    customerEmail: event.customer_email,
+    planName: event.plan_name,
+    paymentMethod: "apple_pay",
+    payToken: event.pay_token,
+    merchantId: event.merchant_id,
+    recoveredAt: new Date().toISOString(),
+  }).catch(() => {});
 
   return {
     success: true,

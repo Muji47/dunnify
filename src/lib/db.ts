@@ -17,6 +17,7 @@ export interface Merchant {
   stripe_restricted_key?: string;
   meta_whatsapp_phone_number_id?: string;
   meta_whatsapp_token?: string;
+  slack_webhook_url?: string;
   plan_tier: "starter" | "growth" | "scale";
   quiet_hours_enabled: boolean;
   quiet_hours_start: string;

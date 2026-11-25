@@ -36,6 +36,7 @@ import {
   FastForward,
   Copy,
   Check,
+  Download,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -86,6 +87,7 @@ export default function DashboardPage() {
     stripe_restricted_key: "",
     meta_whatsapp_phone_number_id: "",
     meta_whatsapp_token: "",
+    slack_webhook_url: "",
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccessMessage, setSettingsSuccessMessage] = useState("");
@@ -98,6 +100,12 @@ export default function DashboardPage() {
     error?: string;
     mode?: string;
     verifiedAt?: string;
+  } | null>(null);
+  const [testingSlack, setTestingSlack] = useState(false);
+  const [slackTestResult, setSlackTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
   } | null>(null);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
@@ -118,6 +126,7 @@ export default function DashboardPage() {
             stripe_restricted_key: data.merchant.stripe_restricted_key || "",
             meta_whatsapp_phone_number_id: data.merchant.meta_whatsapp_phone_number_id || "",
             meta_whatsapp_token: data.merchant.meta_whatsapp_token || "",
+            slack_webhook_url: data.merchant.slack_webhook_url || "",
           });
         }
       }
@@ -356,6 +365,41 @@ export default function DashboardPage() {
     }
   };
 
+  const handleTestSlackConnection = async () => {
+    setTestingSlack(true);
+    setSlackTestResult(null);
+    try {
+      const res = await fetch("/api/dashboard/slack/test-ping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slackWebhookUrl: settingsForm.slack_webhook_url,
+          saveUrl: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSlackTestResult({
+          success: true,
+          message: "Test celebration message posted to Slack successfully!",
+        });
+        await fetchData();
+      } else {
+        setSlackTestResult({
+          success: false,
+          error: data.error || "Failed to deliver message to Slack.",
+        });
+      }
+    } catch (err: any) {
+      setSlackTestResult({
+        success: false,
+        error: err.message || "Network error pinging Slack.",
+      });
+    } finally {
+      setTestingSlack(false);
+    }
+  };
+
   const handleProcessDueMessages = async () => {
     try {
       await fetch("/api/scheduler/dunning", { method: "POST" });
@@ -532,6 +576,15 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <a
+              href="/api/dashboard/export/csv"
+              download
+              className="px-3 py-2 rounded-xl text-xs font-medium bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 transition flex items-center gap-1.5 cursor-pointer"
+              title="Download accounting CSV report of all failed and recovered payments"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-400" />
+              <span>Export CSV</span>
+            </a>
             <button
               onClick={fetchData}
               className="px-3 py-2 rounded-xl text-xs font-medium bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 transition flex items-center gap-1.5"
@@ -1288,6 +1341,72 @@ export default function DashboardPage() {
                   <p className="text-[10px] text-slate-500">
                     Leave empty to operate in Sandbox Simulation mode for zero-token testing.
                   </p>
+                </div>
+              </div>
+
+              {/* -------------------------------------------------------- */}
+              {/* SLACK & DISCORD RECOVERY NOTIFICATIONS                  */}
+              {/* -------------------------------------------------------- */}
+              <div className="bg-[#080F1C] border border-white/[0.08] rounded-2xl p-4.5 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-100 text-sm">Slack & Discord Real-Time Alerts</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                    Live Webhook
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-slate-300 font-semibold text-[11px]">
+                    Slack Incoming Webhook URL:
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="https://hooks.slack.com/services/..."
+                    value={settingsForm.slack_webhook_url}
+                    onChange={(e) =>
+                      setSettingsForm({ ...settingsForm, slack_webhook_url: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-[#111C2E] border border-white/[0.08] rounded-xl text-slate-100 font-mono text-xs focus:border-emerald-500/50 outline-none"
+                  />
+                  <div className="text-[10px] text-slate-400">
+                    Automatically broadcasts recovered cash, retained ARR, and declined invoices directly into your Slack channel.
+                  </div>
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleTestSlackConnection}
+                    disabled={testingSlack || !settingsForm.slack_webhook_url}
+                    className="w-full py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-slate-200 font-semibold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs"
+                  >
+                    <Zap className={`w-3.5 h-3.5 text-emerald-400 ${testingSlack ? "animate-spin" : ""}`} />
+                    {testingSlack ? "Sending Test Message..." : "Send Test Slack Notification ⚡"}
+                  </button>
+
+                  {slackTestResult && (
+                    <div
+                      className={`mt-2.5 p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                        slackTestResult.success
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                          : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+                      }`}
+                    >
+                      {slackTestResult.success ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <div className="font-semibold">
+                          {slackTestResult.success ? "Slack Connected!" : "Slack Test Failed"}
+                        </div>
+                        <div className="text-[11px] mt-0.5 text-slate-300">
+                          {slackTestResult.message || slackTestResult.error}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
